@@ -71,8 +71,30 @@ function hexToBytes(hex) {
   return bytes;
 }
 
+// 현재 시각(한국 시간) 문자열 — 모델은 시계가 없어서 시간을 지어내므로 직접 넣어준다.
+function nowKST() {
+  const d = new Date(Date.now() + 9 * 3600 * 1000);
+  const days = ["일", "월", "화", "수", "목", "금", "토"];
+  const p = (n) => String(n).padStart(2, "0");
+  return (
+    d.getUTCFullYear() + "년 " + (d.getUTCMonth() + 1) + "월 " + d.getUTCDate() + "일 " +
+    "(" + days[d.getUTCDay()] + ") " + p(d.getUTCHours()) + ":" + p(d.getUTCMinutes()) + " (KST)"
+  );
+}
+
+// 챗봇 공통 시스템 프롬프트 (실시간 시각 + 환각/오독 방지 지시)
+function chatSystem() {
+  return (
+    "너는 친절한 한국어 AI 비서다. 사용자의 질문에 정확하고 간결하게 답한다.\n" +
+    "현재 시각은 " + nowKST() + " 이다. 날짜·시간을 물으면 반드시 이 값을 기준으로 답한다.\n" +
+    "모르는 것은 지어내지 말고 모른다고 답한다. 질문에 나온 단어를 비슷한 다른 단어로 바꾸지 말고 그대로 이해한다.\n" +
+    "참고: '클로드(Claude)'는 Anthropic이 만든 AI 어시스턴트이며, 저장소를 뜻하는 '클라우드(Cloud)'와는 전혀 다르다."
+  );
+}
+
 // 여러 텍스트 모델을 순서대로 시도하고, 폐기/미존재 오류면 다음 모델로 자동 대체한다.
 // 무료 한도 초과 같은 "정상적인" 오류는 그대로 위로 던져서 사용자에게 알린다.
+// 반환값: { text, model } — 실제로 응답한 모델 ID도 함께 돌려준다(진단용).
 async function runText(env, messages, maxTokens = 1024) {
   let lastErr = "";
   for (const model of TEXT_MODELS) {
@@ -84,7 +106,7 @@ async function runText(env, messages, maxTokens = 1024) {
         lastErr = text;
         continue;
       }
-      if (text) return text;
+      if (text) return { text, model };
       lastErr = "빈 응답";
     } catch (err) {
       lastErr = String((err && err.message) || err);
@@ -124,11 +146,11 @@ async function handleChat(request, env) {
   if (!msgs) msgs = [{ role: "user", content: body.message || "" }];
 
   const withSystem = [
-    { role: "system", content: "너는 친절한 한국어 AI 비서다. 사용자의 질문에 정확하고 간결하게 답한다." },
+    { role: "system", content: chatSystem() },
     ...msgs,
   ];
-  const answer = await runText(env, withSystem, 1024);
-  return json({ answer });
+  const { text, model } = await runText(env, withSystem, 1024);
+  return json({ answer: text, model });
 }
 
 // ---------- 메일 답장 초안 ----------
@@ -140,7 +162,7 @@ async function handleEmailReply(request, env) {
   if (keywords && keywords.trim()) user += "\n\n답장에 아래 내용/키워드를 반드시 반영해줘:\n" + keywords;
   if (tone && tone.trim()) user += "\n\n말투/톤: " + tone;
 
-  const draft = await runText(
+  const { text: draft } = await runText(
     env,
     [
       { role: "system", content: EMAIL_SYSTEM },
@@ -204,17 +226,18 @@ async function processDiscordCommand(name, opts, interaction, env) {
 
   try {
     if (name === "chat") {
-      const answer = await runText(
+      const { text, model } = await runText(
         env,
         [
-          { role: "system", content: "너는 친절한 한국어 AI 비서다. 간결하게 답한다." },
+          { role: "system", content: chatSystem() },
           { role: "user", content: opts.message || "" },
         ],
         800
       );
-      await patchFollowup(followupUrl, { content: (answer || "(빈 응답)").slice(0, 1900) });
+      const body = (text || "(빈 응답)").slice(0, 1850);
+      await patchFollowup(followupUrl, { content: body + "\n-# 모델: " + model });
     } else if (name === "email") {
-      const answer = await runText(
+      const { text: answer } = await runText(
         env,
         [
           { role: "system", content: EMAIL_SYSTEM },
