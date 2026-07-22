@@ -1,0 +1,26 @@
+name: Register Discord commands
+
+# 디스코드 슬래시 명령(/chat, /email)을 등록하는 워크플로.
+# Actions 탭에서 "Run workflow" 버튼으로 필요할 때만 수동 실행합니다.
+# 미리 저장소 Secret 두 개가 필요합니다: DISCORD_APP_ID, DISCORD_TOKEN
+on:
+  workflow_dispatch:
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    name: Register
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Register slash commands
+        env:
+          DISCORD_APP_ID: ${{ secrets.DISCORD_APP_ID }}
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+        run: node register-commands.mjs
