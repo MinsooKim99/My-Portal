@@ -7,12 +7,13 @@
 //    Cloudflare 대시보드 > AI > Models 에서 최신 ID를 확인하고 필요하면 아래를 교체하세요.
 
 // 텍스트 모델 후보 목록 — 앞에서부터 시도하고, 폐기(deprecated)/오류면 자동으로 다음 모델로 넘어감.
+// 맨 앞이 기본(품질 우선). 무료 뉴런을 아끼려면 작은 모델을 위로 올리면 됨.
 // ⚠️ Cloudflare가 모델을 은퇴시켜도 이 목록만 최신 ID로 바꾸면 됩니다. (대시보드 AI > Models 에서 확인)
 const TEXT_MODELS = [
-  "@cf/meta/llama-3.2-3b-instruct",           // 작고 저렴, 신형 (무료 소모 적음)
-  "@cf/meta/llama-3.1-8b-instruct-fast",      // 8B 빠른 변형
-  "@cf/meta/llama-3.3-70b-instruct-fp8-fast", // 똑똑한 플래그십 (확실한 대체용)
-  "@cf/meta/llama-4-scout-17b-16e-instruct",  // 최신 세대
+  "@cf/meta/llama-3.3-70b-instruct-fp8-fast", // 똑똑한 플래그십 (기본 = 품질 우선)
+  "@cf/meta/llama-4-scout-17b-16e-instruct",  // 최신 세대 (대체 1)
+  "@cf/meta/llama-3.1-8b-instruct-fast",      // 8B 빠른 변형 (대체 2)
+  "@cf/meta/llama-3.2-3b-instruct",           // 작은 모델 (최후 대체)
 ];
 const IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell"; // 텍스트→이미지 생성
 const IMG2IMG_MODEL = "@cf/runwayml/stable-diffusion-v1-5-img2img"; // 이미지 편집(img2img)
