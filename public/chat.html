@@ -52,6 +52,7 @@
       <header class="chat-head">
         <div class="chat-head-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10H8.5L4 20V5.5Z"></path></svg></div>
         <div><div class="t">챗봇</div><div class="s">한국어 AI 비서</div></div>
+        <button id="newChat" class="copy-btn" style="margin-left:auto"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg> 새 대화</button>
       </header>
       <div class="chat-log scroll" id="log"><div class="chat-inner" id="inner"></div></div>
       <div class="chat-foot">
@@ -98,8 +99,13 @@
     var inner = document.getElementById("inner");
     var log = document.getElementById("log");
     var input = document.getElementById("chatInput");
-    var messages = [];
+    var KEY = "mp-chat-history";
+    var GREET = "안녕하세요! 무엇을 도와드릴까요? 질문을 입력하시면 바로 답해 드릴게요.";
+    var messages = load();
     var AI_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 4v3M12 17v3M4 12h3M17 12h3"></path></svg>';
+
+    function load() { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; } }
+    function save() { try { localStorage.setItem(KEY, JSON.stringify(messages)); } catch (e) {} }
 
     function scroll() { log.scrollTop = log.scrollHeight; }
 
@@ -124,8 +130,9 @@
       return row;
     }
 
-    // 초기 인사
-    addMsg("ai", "안녕하세요! 무엇을 도와드릴까요? 질문을 입력하시면 바로 답해 드릴게요.");
+    // 첫 인사 + 저장된 대화 복원
+    addMsg("ai", GREET);
+    messages.forEach(function (m) { addMsg(m.role === "user" ? "user" : "ai", m.content); });
 
     async function send(text) {
       text = (text || input.value).trim();
@@ -133,6 +140,7 @@
       input.value = "";
       addMsg("user", text);
       messages.push({ role: "user", content: text });
+      save();
       var typing = addTyping();
       try {
         var res = await fetch("/api/chat", {
@@ -144,11 +152,23 @@
         typing.remove();
         addMsg("ai", answer);
         messages.push({ role: "assistant", content: answer });
+        save();
       } catch (e) {
         typing.remove();
+        messages.pop(); // 실패한 턴은 저장하지 않음
+        save();
         addMsg("ai", "오류: " + e.message);
       }
     }
+
+    // 새 대화: 기록 비우고 처음 상태로
+    document.getElementById("newChat").addEventListener("click", function () {
+      messages = [];
+      save();
+      inner.innerHTML = "";
+      addMsg("ai", GREET);
+      input.focus();
+    });
 
     document.getElementById("chatSend").addEventListener("click", function () { send(); });
     input.addEventListener("keydown", function (e) {
