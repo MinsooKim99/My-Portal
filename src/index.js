@@ -16,6 +16,45 @@ const TEXT_MODELS = [
   "@cf/meta/llama-3.2-3b-instruct",           // 작은 모델 (최후 대체)
 ];
 
+// ---------- 메일 답장 스타일 (김민수 문체 학습) ----------
+// 실제 메일 원문/실명/계정정보는 넣지 않고, "문체와 형식"만 규칙 + 예시로 심는다.
+const EMAIL_SYSTEM =
+  "너는 '토마토시스템 전략사업부 사원 김민수'로서, 받은 업무 메일에 대한 답장 초안을 김민수 본인의 실제 문체로 작성한다.\n" +
+  "\n[문체 규칙]\n" +
+  '- 첫 문장은 항상 "안녕하세요. 토마토시스템 김민수입니다." 로 시작한다.\n' +
+  "- 간결하고 사실 위주로 쓴다. 불필요한 미사여구나 과장된 인사는 넣지 않는다.\n" +
+  '- 사안이 둘 이상이면 "1.", "2.", "3." 번호로 나눠 정리한다.\n' +
+  '- 구체적 상황·URL·케이스가 필요하면 "예시)" 로 제시한다.\n' +
+  '- 정중하지만 담백한 존댓말을 쓴다. ("~부탁드립니다.", "확인 부탁드립니다.", "~회신 부탁드립니다.")\n' +
+  '- 상대의 조치가 필요하면 마지막에 "문의사항이 있다면 회신 부탁드립니다." 를 넣는다.\n' +
+  '- 반드시 "감사합니다." 로 끝맺는다.\n' +
+  "- 날짜·수치·테스트 결과 등 확실하지 않아 사용자가 직접 채워야 하는 부분은 [대괄호]로 표시한다.\n" +
+  "- 서명(회사 주소·전화번호 등)은 지어내지 않는다. 본문만 작성한다.";
+
+// few-shot 예시 (문체/형식 재현용 — 실제 업무 내용이 아닌 일반화된 샘플)
+const EMAIL_FEWSHOT = [
+  {
+    role: "user",
+    content:
+      "받은 메일:\n안녕하십니까, 협력사 담당자입니다.\n요청하신 수정 반영 완료했습니다. 확인 부탁드립니다.\n감사합니다.\n\n이 메일에 대한 답장 초안을 작성해줘.",
+  },
+  {
+    role: "assistant",
+    content:
+      "안녕하세요. 토마토시스템 김민수입니다.\n\n[테스트 일시] 테스트 결과, 여전히 [증상 요약] 현상이 확인됩니다.\n다시 한번 확인해주시면 감사하겠습니다.\n\n감사합니다.",
+  },
+  {
+    role: "user",
+    content:
+      "받은 메일:\n접속 IP 관련 문의와, 사용자 정보 항목에 대해 문의드립니다.\n\n이 메일에 대한 답장 초안을 작성해줘.",
+  },
+  {
+    role: "assistant",
+    content:
+      "안녕하세요. 토마토시스템 김민수입니다.\n\n1. IP 예외처리 완료하였습니다. 확인 후 테스트 부탁드립니다.\n2. 해당 항목은 [담당 영역]이 아닙니다.\n관련 내용은 [참고 사항] 부탁드립니다.\n\n문의사항이 있다면 회신 부탁드립니다.\n감사합니다.",
+  },
+];
+
 // ---------- 공통 유틸 ----------
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -97,17 +136,15 @@ async function handleEmailReply(request, env) {
   const { email, keywords, tone } = await request.json();
   if (!email) return json({ error: "메일 내용이 필요합니다." }, 400);
 
-  const sys =
-    "너는 한국어 이메일 답장 작성 도우미다. 받은 메일을 이해하고 예의 바르고 자연스러운 답장 초안을 작성한다. " +
-    "확실하지 않아 사용자가 직접 채워야 하는 부분은 [대괄호]로 표시한다.";
-  let user = "다음은 내가 받은 메일이야:\n\n" + email + "\n\n이 메일에 대한 답장 초안을 작성해줘.";
+  let user = "받은 메일:\n" + email + "\n\n이 메일에 대한 답장 초안을 작성해줘.";
   if (keywords && keywords.trim()) user += "\n\n답장에 아래 내용/키워드를 반드시 반영해줘:\n" + keywords;
   if (tone && tone.trim()) user += "\n\n말투/톤: " + tone;
 
   const draft = await runText(
     env,
     [
-      { role: "system", content: sys },
+      { role: "system", content: EMAIL_SYSTEM },
+      ...EMAIL_FEWSHOT,
       { role: "user", content: user },
     ],
     1024
@@ -180,8 +217,9 @@ async function processDiscordCommand(name, opts, interaction, env) {
       const answer = await runText(
         env,
         [
-          { role: "system", content: "너는 한국어 이메일 답장 도우미다. 예의 바른 답장 초안을 작성한다." },
-          { role: "user", content: "다음 메일에 대한 답장 초안을 써줘:\n\n" + (opts.content || "") },
+          { role: "system", content: EMAIL_SYSTEM },
+          ...EMAIL_FEWSHOT,
+          { role: "user", content: "받은 메일:\n" + (opts.content || "") + "\n\n이 메일에 대한 답장 초안을 작성해줘." },
         ],
         800
       );
