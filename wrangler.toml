@@ -1,0 +1,12 @@
+name = "my-ai-worker"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# Workers AI 바인딩 (env.AI 로 호출)
+[ai]
+binding = "AI"
+
+# 정적 파일(웹페이지) 서빙: public/ 폴더의 index.html, email.html
+[assets]
+directory = "./public"
+binding = "ASSETS"

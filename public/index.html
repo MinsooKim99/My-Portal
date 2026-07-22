@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>나만의 AI</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", sans-serif;
+    background: #0f1115; color: #e7e9ee;
+  }
+  header {
+    padding: 14px 20px; border-bottom: 1px solid #232733; display: flex; align-items: center; gap: 16px;
+    position: sticky; top: 0; background: #0f1115; z-index: 10;
+  }
+  header h1 { font-size: 17px; margin: 0; }
+  nav a { color: #9aa4b2; text-decoration: none; font-size: 14px; margin-left: 12px; }
+  nav a:hover { color: #e7e9ee; }
+  .tabs { display: flex; gap: 6px; padding: 12px 20px 0; }
+  .tab { padding: 8px 14px; border-radius: 8px 8px 0 0; cursor: pointer; color: #9aa4b2; font-size: 14px; }
+  .tab.active { background: #1a1e27; color: #fff; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px 20px 40px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .chat-log { min-height: 240px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+  .msg { padding: 10px 14px; border-radius: 12px; max-width: 85%; white-space: pre-wrap; line-height: 1.5; font-size: 15px; }
+  .msg.user { background: #2b6cff; color: #fff; align-self: flex-end; border-bottom-right-radius: 3px; }
+  .msg.ai { background: #1a1e27; align-self: flex-start; border-bottom-left-radius: 3px; }
+  .row { display: flex; gap: 8px; }
+  textarea, input[type=text] {
+    width: 100%; background: #1a1e27; border: 1px solid #2b3240; color: #e7e9ee;
+    border-radius: 10px; padding: 12px; font-size: 15px; font-family: inherit; resize: vertical;
+  }
+  button {
+    background: #2b6cff; color: #fff; border: none; border-radius: 10px; padding: 12px 18px;
+    font-size: 15px; cursor: pointer; white-space: nowrap;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  button.ghost { background: #232733; }
+  .hint { color: #6b7480; font-size: 13px; margin: 6px 0 14px; }
+  img.result { max-width: 100%; border-radius: 12px; margin-top: 14px; display: none; }
+  .label { font-size: 13px; color: #9aa4b2; margin: 14px 0 6px; }
+  .spin { color: #9aa4b2; font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🤖 나만의 AI</h1>
+  <nav>
+    <a href="/index.html">챗봇 · 이미지</a>
+    <a href="/email.html">메일 답장 도구</a>
+  </nav>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-tab="chat">💬 채팅</div>
+  <div class="tab" data-tab="gen">🎨 이미지 생성</div>
+  <div class="tab" data-tab="edit">✏️ 이미지 편집</div>
+</div>
+
+<main>
+  <!-- 채팅 -->
+  <section class="panel active" id="chat">
+    <div class="chat-log" id="log"></div>
+    <div class="row">
+      <textarea id="chatInput" rows="2" placeholder="무엇이든 물어보세요..."></textarea>
+      <button id="chatSend">보내기</button>
+    </div>
+  </section>
+
+  <!-- 이미지 생성 -->
+  <section class="panel" id="gen">
+    <div class="label">만들고 싶은 그림을 설명해주세요</div>
+    <div class="row">
+      <input type="text" id="genPrompt" placeholder="예: 노을 지는 바닷가의 등대, 유화 스타일" />
+      <button id="genBtn">생성</button>
+    </div>
+    <div class="hint">무료 티어로 동작합니다. 생성에 몇 초 걸릴 수 있어요.</div>
+    <div class="spin" id="genSpin"></div>
+    <img class="result" id="genImg" alt="생성된 이미지" />
+  </section>
+
+  <!-- 이미지 편집 -->
+  <section class="panel" id="edit">
+    <div class="label">편집할 이미지를 올리고, 어떻게 바꿀지 설명해주세요</div>
+    <input type="file" id="editFile" accept="image/*" />
+    <img class="result" id="editPreview" alt="원본 미리보기" />
+    <div class="row" style="margin-top:12px;">
+      <input type="text" id="editPrompt" placeholder="예: 배경을 겨울 눈밭으로 바꿔줘" />
+      <button id="editBtn">편집</button>
+    </div>
+    <div class="hint">⚠️ 편집(img2img)은 무료 티어에서 결과가 들쭉날쭉할 수 있는 실험적 기능입니다.</div>
+    <div class="spin" id="editSpin"></div>
+    <img class="result" id="editImg" alt="편집된 이미지" />
+  </section>
+</main>
+
+<script>
+  // 탭 전환
+  document.querySelectorAll(".tab").forEach((t) => {
+    t.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
+      document.querySelectorAll(".panel").forEach((x) => x.classList.remove("active"));
+      t.classList.add("active");
+      document.getElementById(t.dataset.tab).classList.add("active");
+    });
+  });
+
+  // ---- 채팅 ----
+  const log = document.getElementById("log");
+  const messages = [];
+  function addMsg(role, text) {
+    const div = document.createElement("div");
+    div.className = "msg " + (role === "user" ? "user" : "ai");
+    div.textContent = text;
+    log.appendChild(div);
+    div.scrollIntoView({ behavior: "smooth", block: "end" });
+    return div;
+  }
+  async function sendChat() {
+    const input = document.getElementById("chatInput");
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    addMsg("user", text);
+    messages.push({ role: "user", content: text });
+    const aiDiv = addMsg("ai", "…");
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages }),
+      });
+      const data = await res.json();
+      const answer = data.answer || data.error || "(응답 없음)";
+      aiDiv.textContent = answer;
+      messages.push({ role: "assistant", content: answer });
+    } catch (e) {
+      aiDiv.textContent = "오류: " + e.message;
+    }
+  }
+  document.getElementById("chatSend").addEventListener("click", sendChat);
+  document.getElementById("chatInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  });
+
+  // ---- 이미지 생성 ----
+  document.getElementById("genBtn").addEventListener("click", async () => {
+    const prompt = document.getElementById("genPrompt").value.trim();
+    if (!prompt) return;
+    const btn = document.getElementById("genBtn");
+    const spin = document.getElementById("genSpin");
+    const img = document.getElementById("genImg");
+    btn.disabled = true; spin.textContent = "그리는 중..."; img.style.display = "none";
+    try {
+      const res = await fetch("/api/image", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      const data = await res.json();
+      if (data.image) { img.src = data.image; img.style.display = "block"; spin.textContent = ""; }
+      else spin.textContent = "실패: " + (data.error || "");
+    } catch (e) { spin.textContent = "오류: " + e.message; }
+    btn.disabled = false;
+  });
+
+  // ---- 이미지 편집 ----
+  let editImageData = null;
+  document.getElementById("editFile").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      editImageData = reader.result; // dataURL
+      const p = document.getElementById("editPreview");
+      p.src = editImageData; p.style.display = "block";
+    };
+    reader.readAsDataURL(file);
+  });
+  document.getElementById("editBtn").addEventListener("click", async () => {
+    const prompt = document.getElementById("editPrompt").value.trim();
+    if (!prompt || !editImageData) { alert("이미지와 설명을 모두 입력해주세요."); return; }
+    const btn = document.getElementById("editBtn");
+    const spin = document.getElementById("editSpin");
+    const img = document.getElementById("editImg");
+    btn.disabled = true; spin.textContent = "편집 중..."; img.style.display = "none";
+    try {
+      const res = await fetch("/api/image-edit", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt, image: editImageData }),
+      });
+      const data = await res.json();
+      if (data.image) { img.src = data.image; img.style.display = "block"; spin.textContent = ""; }
+      else spin.textContent = "실패: " + (data.error || "");
+    } catch (e) { spin.textContent = "오류: " + e.message; }
+    btn.disabled = false;
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>메일 답장 도구</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", sans-serif;
+    background: #0f1115; color: #e7e9ee;
+  }
+  header {
+    padding: 14px 20px; border-bottom: 1px solid #232733; display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 17px; margin: 0; }
+  nav a { color: #9aa4b2; text-decoration: none; font-size: 14px; margin-left: 12px; }
+  nav a:hover { color: #e7e9ee; }
+  main { max-width: 760px; margin: 0 auto; padding: 20px; }
+  .label { font-size: 14px; color: #9aa4b2; margin: 16px 0 6px; }
+  textarea, input[type=text] {
+    width: 100%; background: #1a1e27; border: 1px solid #2b3240; color: #e7e9ee;
+    border-radius: 10px; padding: 12px; font-size: 15px; font-family: inherit; resize: vertical;
+  }
+  button {
+    background: #2b6cff; color: #fff; border: none; border-radius: 10px; padding: 12px 20px;
+    font-size: 15px; cursor: pointer; margin-top: 16px;
+  }
+  button:disabled { opacity: .5; }
+  button.ghost { background: #232733; margin-left: 8px; }
+  .out { margin-top: 20px; }
+  .spin { color: #9aa4b2; font-size: 14px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>✉️ 메일 답장 도구</h1>
+  <nav>
+    <a href="/index.html">챗봇 · 이미지</a>
+    <a href="/email.html">메일 답장 도구</a>
+  </nav>
+</header>
+
+<main>
+  <div class="label">받은 메일 내용 (붙여넣기)</div>
+  <textarea id="email" rows="8" placeholder="받은 이메일 전문을 여기에 붙여넣으세요..."></textarea>
+
+  <div class="label">답장에 넣고 싶은 내용 / 키워드 (선택)</div>
+  <input type="text" id="keywords" placeholder="예: 다음 주 화요일 미팅 가능, 자료는 이메일로 전달" />
+
+  <div class="label">말투 / 톤 (선택)</div>
+  <input type="text" id="tone" placeholder="예: 정중하게 / 친근하게 / 간결하게" />
+
+  <button id="genBtn">답장 초안 만들기</button>
+
+  <div class="spin" id="spin"></div>
+
+  <div class="out" id="outWrap" style="display:none;">
+    <div class="label">답장 초안 (수정해서 사용하세요)</div>
+    <textarea id="draft" rows="12"></textarea>
+    <button class="ghost" id="copyBtn">📋 복사</button>
+  </div>
+</main>
+
+<script>
+  document.getElementById("genBtn").addEventListener("click", async () => {
+    const email = document.getElementById("email").value.trim();
+    if (!email) { alert("받은 메일 내용을 입력해주세요."); return; }
+    const keywords = document.getElementById("keywords").value;
+    const tone = document.getElementById("tone").value;
+    const btn = document.getElementById("genBtn");
+    const spin = document.getElementById("spin");
+    btn.disabled = true; spin.textContent = "초안 작성 중...";
+    try {
+      const res = await fetch("/api/email-reply", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, keywords, tone }),
+      });
+      const data = await res.json();
+      if (data.draft) {
+        document.getElementById("draft").value = data.draft;
+        document.getElementById("outWrap").style.display = "block";
+        spin.textContent = "";
+      } else {
+        spin.textContent = "실패: " + (data.error || "");
+      }
+    } catch (e) { spin.textContent = "오류: " + e.message; }
+    btn.disabled = false;
+  });
+
+  document.getElementById("copyBtn").addEventListener("click", () => {
+    const ta = document.getElementById("draft");
+    ta.select();
+    navigator.clipboard.writeText(ta.value);
+    const btn = document.getElementById("copyBtn");
+    btn.textContent = "✅ 복사됨";
+    setTimeout(() => (btn.textContent = "📋 복사"), 1500);
+  });
+</script>
+</body>
+</html>
