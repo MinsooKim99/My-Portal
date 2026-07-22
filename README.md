@@ -49,8 +49,10 @@ https://my-ai-worker.<your-subdomain>.workers.dev
 
 이 주소를 브라우저에서 열면:
 
-- `/` (또는 `/index.html`) → 챗봇 페이지
+- `/` (또는 `/index.html`) → 홈
+- `/chat.html` → 챗봇
 - `/email.html` → 메일 답장 도구
+- `/bot.html` → 디스코드 봇 안내
 
 > 처음 배포 시 Workers AI 사용에 대한 안내가 나올 수 있습니다. 그대로 진행하면 됩니다.
 > 이 주소가 아래 디스코드 설정에서 쓰이니 복사해두세요.

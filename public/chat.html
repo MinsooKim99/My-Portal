@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>메일 답장 도구 · 나의 포털</title>
+<title>챗봇 · 나의 포털</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
-<body data-page="mail">
+<body data-page="chat">
 <div class="app">
   <aside class="side">
     <div class="brand">
@@ -47,42 +47,17 @@
     </div>
   </aside>
 
-  <main class="main scroll">
-    <div class="page narrow">
-      <div class="eyebrow">메일 답장 도구</div>
-      <h1 class="title lg">받은 메일, 답장 초안까지</h1>
-      <p class="lede sm">받은 메일을 붙여넣고 담고 싶은 내용과 톤을 적으면, 김민수 문체의 답장 초안을 만들어 드립니다.</p>
-
-      <div class="form">
-        <div class="field">
-          <label>받은 메일 내용</label>
-          <textarea id="email" class="control" rows="7" placeholder="받은 이메일 전문을 여기에 붙여넣으세요…"></textarea>
-        </div>
-        <div class="field">
-          <label>답장에 넣을 내용 · 키워드 <span class="opt">(선택)</span></label>
-          <textarea id="keywords" class="control" rows="8" style="min-height:150px" placeholder="예: 다음 주 화요일 미팅 가능, 자료는 이메일로 전달&#10;여러 줄로 자세히 적을수록 답장에 잘 반영돼요."></textarea>
-        </div>
-        <div class="field">
-          <label>말투 · 톤 <span class="opt">(선택)</span></label>
-          <input type="text" id="tone" class="control" placeholder="예: 정중하게 / 간결하게">
-          <div class="chips">
-            <button class="chip" data-tone="정중하게">정중하게</button>
-            <button class="chip" data-tone="친근하게">친근하게</button>
-            <button class="chip" data-tone="간결하게">간결하게</button>
-          </div>
-        </div>
-
-        <div class="gen-row">
-          <button id="genBtn" class="btn btn-primary btn-lg"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3"></path></svg> 답장 초안 만들기</button>
-          <span class="status" id="status"></span>
-        </div>
-
-        <div id="draftCard" class="draft-card hidden">
-          <div class="draft-head">
-            <div class="t">답장 초안 <span style="font-family:'Noto Sans KR',sans-serif;font-weight:400;font-size:12.5px;color:var(--muted3)">· 수정해서 사용하세요</span></div>
-            <button id="copyBtn" class="copy-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg> 복사</button>
-          </div>
-          <textarea id="draft" class="control" rows="12" style="border:none;background:transparent;padding:16px 0 0;border-top:1px solid var(--line2);border-radius:0"></textarea>
+  <main class="main">
+    <div class="chat">
+      <header class="chat-head">
+        <div class="chat-head-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10H8.5L4 20V5.5Z"></path></svg></div>
+        <div><div class="t">챗봇</div><div class="s">한국어 AI 비서</div></div>
+      </header>
+      <div class="chat-log scroll" id="log"><div class="chat-inner" id="inner"></div></div>
+      <div class="chat-foot">
+        <div class="chat-input-wrap">
+          <textarea id="chatInput" rows="1" placeholder="메시지를 입력하세요…"></textarea>
+          <button id="chatSend" class="icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M12 5l7 7-7 7"></path></svg></button>
         </div>
       </div>
     </div>
@@ -120,43 +95,69 @@
 <script src="app.js"></script>
 <script>
   (function () {
-    document.querySelectorAll(".chip[data-tone]").forEach(function (c) {
-      c.addEventListener("click", function () { document.getElementById("tone").value = c.getAttribute("data-tone"); });
-    });
+    var inner = document.getElementById("inner");
+    var log = document.getElementById("log");
+    var input = document.getElementById("chatInput");
+    var messages = [];
+    var AI_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 4v3M12 17v3M4 12h3M17 12h3"></path></svg>';
 
-    document.getElementById("genBtn").addEventListener("click", async function () {
-      var email = document.getElementById("email").value.trim();
-      var status = document.getElementById("status");
-      if (!email) { status.textContent = "받은 메일 내용을 먼저 입력해 주세요."; return; }
-      var keywords = document.getElementById("keywords").value;
-      var tone = document.getElementById("tone").value;
-      var btn = this;
-      btn.disabled = true; btn.style.opacity = ".6"; status.textContent = "초안 작성 중…";
+    function scroll() { log.scrollTop = log.scrollHeight; }
+
+    function addMsg(role, text) {
+      var row = document.createElement("div");
+      row.className = "msg-row" + (role === "user" ? " user" : "");
+      if (role === "ai") { var av = document.createElement("div"); av.className = "ai-av"; av.innerHTML = AI_ICON; row.appendChild(av); }
+      var b = document.createElement("div");
+      b.className = "bubble" + (role === "user" ? " user" : "");
+      b.textContent = text;
+      row.appendChild(b);
+      inner.appendChild(row);
+      scroll();
+      return b;
+    }
+
+    function addTyping() {
+      var row = document.createElement("div");
+      row.className = "msg-row";
+      row.innerHTML = '<div class="ai-av">' + AI_ICON + '</div><div class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>';
+      inner.appendChild(row); scroll();
+      return row;
+    }
+
+    // 초기 인사
+    addMsg("ai", "안녕하세요! 무엇을 도와드릴까요? 질문을 입력하시면 바로 답해 드릴게요.");
+
+    async function send(text) {
+      text = (text || input.value).trim();
+      if (!text) return;
+      input.value = "";
+      addMsg("user", text);
+      messages.push({ role: "user", content: text });
+      var typing = addTyping();
       try {
-        var res = await fetch("/api/email-reply", {
+        var res = await fetch("/api/chat", {
           method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email: email, keywords: keywords, tone: tone })
+          body: JSON.stringify({ messages: messages })
         });
         var data = await res.json();
-        if (data.draft) {
-          document.getElementById("draft").value = data.draft;
-          document.getElementById("draftCard").classList.remove("hidden");
-          status.textContent = "";
-        } else {
-          status.textContent = "실패: " + (data.error || "");
-        }
-      } catch (e) { status.textContent = "오류: " + e.message; }
-      btn.disabled = false; btn.style.opacity = "1";
+        var answer = data.answer || data.error || "(응답 없음)";
+        typing.remove();
+        addMsg("ai", answer);
+        messages.push({ role: "assistant", content: answer });
+      } catch (e) {
+        typing.remove();
+        addMsg("ai", "오류: " + e.message);
+      }
+    }
+
+    document.getElementById("chatSend").addEventListener("click", function () { send(); });
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
     });
 
-    document.getElementById("copyBtn").addEventListener("click", function () {
-      var ta = document.getElementById("draft");
-      ta.select();
-      try { navigator.clipboard.writeText(ta.value); } catch (e) {}
-      var b = this, html = b.innerHTML;
-      b.textContent = "복사됨 ✓";
-      setTimeout(function () { b.innerHTML = html; }, 1500);
-    });
+    // 홈에서 넘어온 질문 자동 전송
+    var q = new URLSearchParams(location.search).get("q");
+    if (q) send(q);
   })();
 </script>
 </body>
