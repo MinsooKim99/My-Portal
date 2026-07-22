@@ -226,7 +226,7 @@ async function processDiscordCommand(name, opts, interaction, env) {
 
   try {
     if (name === "chat") {
-      const { text, model } = await runText(
+      const { text } = await runText(
         env,
         [
           { role: "system", content: chatSystem() },
@@ -234,8 +234,7 @@ async function processDiscordCommand(name, opts, interaction, env) {
         ],
         800
       );
-      const body = (text || "(빈 응답)").slice(0, 1850);
-      await patchFollowup(followupUrl, { content: body + "\n-# 모델: " + model });
+      await patchFollowup(followupUrl, { content: (text || "(빈 응답)").slice(0, 1900) });
     } else if (name === "email") {
       const { text: answer } = await runText(
         env,
