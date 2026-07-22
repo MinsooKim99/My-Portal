@@ -6,6 +6,10 @@ compatibility_date = "2026-07-01"
 [ai]
 binding = "AI"
 
+# 디스코드 봇 서명 검증용 공개키 (PUBLIC KEY = 공개용 값이라 커밋해도 안전)
+[vars]
+DISCORD_PUBLIC_KEY = "283f007517223925f35d405284f6de6be1b545d72b11798f4d9bd2409a17f3e4"
+
 # 정적 파일(웹페이지) 서빙: public/ 폴더의 index.html, email.html
 [assets]
 directory = "./public"
