@@ -3,9 +3,8 @@
 신용카드 없이 **무료**로 돌아가는 개인용 AI 프로젝트입니다.
 
 - 💬 **챗봇 웹페이지** — 채팅으로 질의응답
-- 🎨 **이미지 생성 / 편집** — 웹페이지에서 그림 생성, 업로드 이미지 편집(실험적)
 - ✉️ **메일 답장 도구** — 받은 메일 붙여넣으면 답장 초안 작성 (+키워드 반영)
-- 🤖 **디스코드 봇** — 디스코드에서 `/chat`, `/image`, `/email` 명령 사용
+- 🤖 **디스코드 봇** — 디스코드에서 `/chat`, `/email` 명령 사용
 
 모든 AI는 **Cloudflare Workers AI**(하루 무료 한도)로 동작합니다.
 
@@ -50,7 +49,7 @@ https://my-ai-worker.<your-subdomain>.workers.dev
 
 이 주소를 브라우저에서 열면:
 
-- `/` (또는 `/index.html`) → 챗봇 · 이미지 페이지
+- `/` (또는 `/index.html`) → 챗봇 페이지
 - `/email.html` → 메일 답장 도구
 
 > 처음 배포 시 Workers AI 사용에 대한 안내가 나올 수 있습니다. 그대로 진행하면 됩니다.
@@ -107,14 +106,14 @@ DISCORD_APP_ID=여기_앱ID DISCORD_TOKEN=여기_봇토큰 node register-command
 $env:DISCORD_APP_ID="여기_앱ID"; $env:DISCORD_TOKEN="여기_봇토큰"; node register-commands.mjs
 ```
 
-`✅ 슬래시 명령 등록 완료: /chat, /image, /email` 이 뜨면 성공입니다.
+`✅ 슬래시 명령 등록 완료: /chat, /email` 이 뜨면 성공입니다.
 
 ### 3-6. 봇을 내 서버에 초대
 1. 개발자 페이지 → **Installation**(또는 OAuth2 → URL Generator)
 2. 스코프에서 **applications.commands** (그리고 필요시 **bot**) 선택
 3. 생성된 초대 URL을 브라우저에서 열어 내 디스코드 서버에 추가
 
-이제 디스코드 채팅창에서 `/chat`, `/image`, `/email` 을 써보세요.
+이제 디스코드 채팅창에서 `/chat`, `/email` 을 써보세요.
 
 ---
 
@@ -131,12 +130,9 @@ npx wrangler dev
 
 ## 자주 겪는 문제
 
-- **이미지가 안 뜬다** → 무료 한도(하루 뉴런)를 초과했거나 모델 ID가 바뀐 경우입니다.
-  Cloudflare 대시보드 **AI > Models** 에서 최신 이미지 모델 ID를 확인해
-  `src/index.js` 상단의 `IMAGE_MODEL` 값을 교체하세요.
 - **디스코드 저장이 안 된다 (endpoint URL)** → PUBLIC KEY를 잘못 넣었거나 재배포를 안 한 경우가 많습니다.
   3-3을 다시 하고 `npx wrangler deploy` 후 저장해보세요.
-- **응답이 느리다 / 이미지 명령이 오래 걸린다** → 정상입니다. 디스코드는 "생각 중..." 표시 후
+- **응답이 느리다 / 명령이 오래 걸린다** → 정상입니다. 디스코드는 "생각 중..." 표시 후
   결과가 준비되면 채워지는 방식(deferred)이라 5초 넘겨도 괜찮습니다.
 - **모델을 더 똑똑한 걸로 바꾸고 싶다** → `src/index.js` 상단 `TEXT_MODELS` 목록의 **맨 앞**에
   원하는 큰 모델(예: `@cf/meta/llama-3.3-70b-instruct-fp8-fast`)을 두면 됩니다. 단, 무료 한도를 더 빨리 씁니다.

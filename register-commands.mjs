@@ -24,13 +24,6 @@ const commands = [
     ],
   },
   {
-    name: "image",
-    description: "설명(프롬프트)으로 이미지 생성하기",
-    options: [
-      { name: "prompt", description: "만들고 싶은 그림 설명", type: 3, required: true },
-    ],
-  },
-  {
     name: "email",
     description: "받은 메일 내용으로 답장 초안 만들기",
     options: [

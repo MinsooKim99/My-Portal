@@ -1,5 +1,5 @@
 // Cloudflare Worker
-//  - 웹페이지(챗봇 + 이미지 생성/편집, 메일 답장 도구)는 public/ 정적파일이 담당
+//  - 웹페이지(챗봇, 메일 답장 도구)는 public/ 정적파일이 담당
 //  - 이 워커는 /api/* 와 디스코드 /interactions 요청을 처리
 //  - AI 는 Cloudflare Workers AI (env.AI) 로 무료 호출
 //
@@ -15,8 +15,6 @@ const TEXT_MODELS = [
   "@cf/meta/llama-3.1-8b-instruct-fast",      // 8B 빠른 변형 (대체 2)
   "@cf/meta/llama-3.2-3b-instruct",           // 작은 모델 (최후 대체)
 ];
-const IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell"; // 텍스트→이미지 생성
-const IMG2IMG_MODEL = "@cf/runwayml/stable-diffusion-v1-5-img2img"; // 이미지 편집(img2img)
 
 // ---------- 공통 유틸 ----------
 function json(data, status = 200) {
@@ -32,21 +30,6 @@ function hexToBytes(hex) {
     bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
   }
   return bytes;
-}
-
-function bufToBase64(buf) {
-  const bytes = new Uint8Array(buf);
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
-}
-
-function base64ToBytes(b64) {
-  const clean = b64.includes(",") ? b64.split(",")[1] : b64;
-  return Uint8Array.from(atob(clean), (c) => c.charCodeAt(0));
 }
 
 // 여러 텍스트 모델을 순서대로 시도하고, 폐기/미존재 오류면 다음 모델로 자동 대체한다.
@@ -83,8 +66,6 @@ export default {
 
     try {
       if (request.method === "POST" && path === "/api/chat") return await handleChat(request, env);
-      if (request.method === "POST" && path === "/api/image") return await handleImage(request, env);
-      if (request.method === "POST" && path === "/api/image-edit") return await handleImageEdit(request, env);
       if (request.method === "POST" && path === "/api/email-reply") return await handleEmailReply(request, env);
       if (request.method === "POST" && path === "/interactions") return await handleDiscord(request, env, ctx);
     } catch (err) {
@@ -109,33 +90,6 @@ async function handleChat(request, env) {
   ];
   const answer = await runText(env, withSystem, 1024);
   return json({ answer });
-}
-
-// ---------- 이미지 생성 ----------
-async function handleImage(request, env) {
-  const { prompt } = await request.json();
-  if (!prompt) return json({ error: "prompt가 필요합니다." }, 400);
-
-  const r = await env.AI.run(IMAGE_MODEL, { prompt, steps: 6 });
-  // flux-1-schnell 은 { image: base64(jpeg) } 형태로 반환
-  if (!r || !r.image) return json({ error: "이미지 생성 실패" }, 500);
-  return json({ image: "data:image/jpeg;base64," + r.image });
-}
-
-// ---------- 이미지 편집 (img2img) ----------
-async function handleImageEdit(request, env) {
-  const { prompt, image } = await request.json(); // image = dataURL 또는 base64
-  if (!prompt || !image) return json({ error: "prompt와 image가 필요합니다." }, 400);
-
-  const bytes = base64ToBytes(image);
-  const r = await env.AI.run(IMG2IMG_MODEL, {
-    prompt,
-    image: [...bytes],
-    strength: 0.6,
-  });
-  // img2img 모델은 PNG 바이너리 스트림을 반환
-  const buf = await new Response(r).arrayBuffer();
-  return json({ image: "data:image/png;base64," + bufToBase64(buf) });
 }
 
 // ---------- 메일 답장 초안 ----------
@@ -222,13 +176,6 @@ async function processDiscordCommand(name, opts, interaction, env) {
         800
       );
       await patchFollowup(followupUrl, { content: (answer || "(빈 응답)").slice(0, 1900) });
-    } else if (name === "image") {
-      const r = await env.AI.run(IMAGE_MODEL, { prompt: opts.prompt || "", steps: 6 });
-      const bytes = base64ToBytes(r.image);
-      const form = new FormData();
-      form.append("payload_json", JSON.stringify({ content: "🖼️ " + (opts.prompt || "") }));
-      form.append("files[0]", new Blob([bytes], { type: "image/jpeg" }), "image.jpg");
-      await fetch(followupUrl, { method: "PATCH", body: form });
     } else if (name === "email") {
       const answer = await runText(
         env,
