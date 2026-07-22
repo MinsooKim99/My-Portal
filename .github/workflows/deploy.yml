@@ -1,0 +1,33 @@
+name: Deploy to Cloudflare Workers
+
+# 언제 배포되나:
+#  - 아래 브랜치에 push 될 때 (기본: 현재 브랜치 / main)
+#  - Actions 탭에서 "Run workflow" 버튼을 직접 눌렀을 때
+on:
+  push:
+    branches:
+      - main
+      - claude/project-goals-review-hfltdb
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
