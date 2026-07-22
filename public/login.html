@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>로그인 · 나의 포털</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .login-wrap { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--bg); }
+  .login-card { width: 100%; max-width: 360px; background: var(--surf); border: 1px solid var(--line2); border-radius: 18px; padding: 32px 28px; box-shadow: 0 8px 30px rgba(80,60,40,.08); }
+  .login-logo { width: 44px; height: 44px; border-radius: 12px; background: var(--acc); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+  .login-card h1 { font-family: 'Noto Serif KR', serif; font-size: 20px; margin: 0 0 4px; color: var(--ink2); }
+  .login-card .sub { font-size: 13px; color: var(--muted2); margin: 0 0 22px; }
+  .login-field { margin-bottom: 12px; }
+  .login-field label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+  .login-input { width: 100%; background: var(--bg); border: 1px solid var(--line2); color: var(--ink); border-radius: 10px; padding: 11px 13px; font-size: 15px; font-family: inherit; }
+  .login-input:focus { outline: none; border-color: var(--acc); }
+  .login-btn { width: 100%; margin-top: 8px; background: var(--acc); color: var(--onacc); border: none; border-radius: 11px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .login-btn:disabled { opacity: .6; cursor: default; }
+  .login-err { color: #e5484d; font-size: 13px; margin-top: 12px; min-height: 18px; }
+  .login-hint { font-size: 12px; color: var(--muted3); margin-top: 16px; text-align: center; }
+</style>
+</head>
+<body data-page="login">
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M5 12H3M21 12h-2M6.4 6.4 5 5M19 19l-1.4-1.4M17.6 6.4 19 5M5 19l1.4-1.4"></path><circle cx="12" cy="12" r="3.4"></circle></svg></div>
+    <h1>나의 포털</h1>
+    <p class="sub">로그인이 필요합니다</p>
+    <form id="loginForm">
+      <div class="login-field">
+        <label>아이디</label>
+        <input id="id" class="login-input" autocomplete="username" placeholder="아이디" />
+      </div>
+      <div class="login-field">
+        <label>비밀번호</label>
+        <input id="pw" type="password" class="login-input" autocomplete="current-password" placeholder="비밀번호" />
+      </div>
+      <button type="submit" class="login-btn" id="loginBtn">로그인</button>
+    </form>
+    <div class="login-err" id="err"></div>
+    <div class="login-hint">기본 계정 · admin / admin</div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+  document.getElementById("loginForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var id = document.getElementById("id").value.trim();
+    var pw = document.getElementById("pw").value;
+    var err = document.getElementById("err");
+    var btn = document.getElementById("loginBtn");
+    err.textContent = "";
+    btn.disabled = true;
+    try {
+      var res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: id, pw: pw }),
+      });
+      var data = await res.json();
+      if (data.ok) { location.href = "/"; return; }
+      err.textContent = data.error || "로그인 실패";
+    } catch (e2) {
+      err.textContent = "오류: " + e2.message;
+    }
+    btn.disabled = false;
+  });
+</script>
+</body>
+</html>

@@ -119,6 +119,73 @@ async function runText(env, messages, maxTokens = 1024) {
   throw new Error("사용 가능한 텍스트 모델이 없습니다(후보가 모두 폐기/오류). 마지막 메시지: " + lastErr);
 }
 
+// ---------- 로그인 / 세션 ----------
+function getCookie(request, name) {
+  const c = request.headers.get("cookie") || "";
+  const m = c.match(new RegExp("(?:^|; )" + name + "=([^;]+)"));
+  return m ? m[1] : null;
+}
+
+// 세션 서명 키. 기본값 대신 Cloudflare 환경변수 SESSION_SECRET 로 덮어쓰면 진짜 보안이 됨.
+function authSecret(env) {
+  return env.SESSION_SECRET || "mp-portal-default-secret-please-override";
+}
+
+async function hmacHex(secret, msg) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function makeSession(env, user) {
+  const payload = btoa(encodeURIComponent(user) + "|" + Date.now());
+  const sig = await hmacHex(authSecret(env), payload);
+  return payload + "." + sig;
+}
+
+async function verifySession(env, token) {
+  if (!token || token.indexOf(".") < 0) return null;
+  const i = token.lastIndexOf(".");
+  const payload = token.slice(0, i);
+  const sig = token.slice(i + 1);
+  if ((await hmacHex(authSecret(env), payload)) !== sig) return null;
+  try {
+    return decodeURIComponent(atob(payload).split("|")[0]);
+  } catch (e) {
+    return null;
+  }
+}
+
+// 슈퍼계정 기본값: admin / admin (환경변수 ADMIN_ID·ADMIN_PW 로 덮어쓸 수 있음)
+async function handleLogin(request, env) {
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+  const id = ((body && body.id) || "").trim();
+  const pw = (body && body.pw) || "";
+  if (id !== (env.ADMIN_ID || "admin") || pw !== (env.ADMIN_PW || "admin")) {
+    return json({ ok: false, error: "아이디 또는 비밀번호가 올바르지 않습니다." }, 401);
+  }
+  const token = await makeSession(env, id);
+  const maxAge = 60 * 60 * 24; // 1일
+  const headers = new Headers({ "content-type": "application/json; charset=utf-8" });
+  headers.append("set-cookie", `mp_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`);
+  headers.append("set-cookie", `mp_auth=1; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`);
+  return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
+}
+
+function handleLogout() {
+  const headers = new Headers({ "content-type": "application/json; charset=utf-8" });
+  headers.append("set-cookie", "mp_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0");
+  headers.append("set-cookie", "mp_auth=; Secure; SameSite=Lax; Path=/; Max-Age=0");
+  return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
+}
+
 // ---------- 진입점 ----------
 export default {
   async fetch(request, env, ctx) {
@@ -126,14 +193,23 @@ export default {
     const path = url.pathname;
 
     try {
-      if (request.method === "POST" && path === "/api/chat") return await handleChat(request, env);
-      if (request.method === "POST" && path === "/api/email-reply") return await handleEmailReply(request, env);
+      // 로그인/로그아웃/디스코드는 인증 없이 처리
+      if (request.method === "POST" && path === "/api/login") return await handleLogin(request, env);
+      if (request.method === "POST" && path === "/api/logout") return handleLogout();
       if (request.method === "POST" && path === "/interactions") return await handleDiscord(request, env, ctx);
+
+      // 보호된 API — 로그인(세션) 필요
+      if (request.method === "POST" && (path === "/api/chat" || path === "/api/email-reply")) {
+        const user = await verifySession(env, getCookie(request, "mp_session"));
+        if (!user) return json({ error: "로그인이 필요합니다." }, 401);
+        if (path === "/api/chat") return await handleChat(request, env);
+        return await handleEmailReply(request, env);
+      }
     } catch (err) {
       return json({ error: String((err && err.message) || err) }, 500);
     }
 
-    // API가 아니면 정적 파일(웹페이지)로
+    // 그 외는 정적 파일(웹페이지). 페이지 접근 제어는 프론트(app.js) 가드가 담당.
     if (env.ASSETS) return env.ASSETS.fetch(request);
     return new Response("Not found", { status: 404 });
   },
