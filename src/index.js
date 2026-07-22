@@ -119,71 +119,206 @@ async function runText(env, messages, maxTokens = 1024) {
   throw new Error("사용 가능한 텍스트 모델이 없습니다(후보가 모두 폐기/오류). 마지막 메시지: " + lastErr);
 }
 
-// ---------- 로그인 / 세션 ----------
+// ---------- 로그인 / 세션 / 계정 (KV: env.USERS) ----------
 function getCookie(request, name) {
   const c = request.headers.get("cookie") || "";
   const m = c.match(new RegExp("(?:^|; )" + name + "=([^;]+)"));
   return m ? m[1] : null;
 }
+function toHex(buf) {
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function randHex(n) { return toHex(crypto.getRandomValues(new Uint8Array(n))); }
 
-// 세션 서명 키. 기본값 대신 Cloudflare 환경변수 SESSION_SECRET 로 덮어쓰면 진짜 보안이 됨.
+// 세션 서명 키. Cloudflare 환경변수 SESSION_SECRET 로 덮어쓰면 진짜 보안이 됨.
 function authSecret(env) {
   return env.SESSION_SECRET || "mp-portal-default-secret-please-override";
 }
-
 async function hmacHex(secret, msg) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg));
-  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return toHex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg)));
 }
-
-async function makeSession(env, user) {
-  const payload = btoa(encodeURIComponent(user) + "|" + Date.now());
-  const sig = await hmacHex(authSecret(env), payload);
-  return payload + "." + sig;
+// 세션 토큰: base64(JSON{u,r,t}) + "." + HMAC
+async function makeSession(env, id, role) {
+  const payload = btoa(encodeURIComponent(JSON.stringify({ u: id, r: role, t: Date.now() })));
+  return payload + "." + (await hmacHex(authSecret(env), payload));
 }
-
 async function verifySession(env, token) {
   if (!token || token.indexOf(".") < 0) return null;
   const i = token.lastIndexOf(".");
   const payload = token.slice(0, i);
-  const sig = token.slice(i + 1);
-  if ((await hmacHex(authSecret(env), payload)) !== sig) return null;
+  if ((await hmacHex(authSecret(env), payload)) !== token.slice(i + 1)) return null;
   try {
-    return decodeURIComponent(atob(payload).split("|")[0]);
-  } catch (e) {
-    return null;
-  }
+    const o = JSON.parse(decodeURIComponent(atob(payload)));
+    return o && o.u ? { id: o.u, role: o.r || "user" } : null;
+  } catch (e) { return null; }
 }
 
-// 슈퍼계정 기본값: admin / admin (환경변수 ADMIN_ID·ADMIN_PW 로 덮어쓸 수 있음)
+// 비밀번호 해시 (PBKDF2-SHA256)
+async function hashPw(pw, saltHex) {
+  const salt = new Uint8Array(saltHex.match(/../g).map((h) => parseInt(h, 16)));
+  const km = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, km, 256);
+  return toHex(bits);
+}
+
+// ---- TOTP (구글 OTP, RFC 6238) ----
+const B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+function genBase32Secret(bytes) {
+  const raw = crypto.getRandomValues(new Uint8Array(bytes || 20));
+  let bits = "", out = "";
+  for (const b of raw) bits += b.toString(2).padStart(8, "0");
+  for (let i = 0; i + 5 <= bits.length; i += 5) out += B32[parseInt(bits.slice(i, i + 5), 2)];
+  return out;
+}
+function base32Decode(s) {
+  s = (s || "").replace(/=+$/, "").replace(/\s/g, "").toUpperCase();
+  let bits = "", bytes = [];
+  for (const c of s) { const v = B32.indexOf(c); if (v >= 0) bits += v.toString(2).padStart(5, "0"); }
+  for (let i = 0; i + 8 <= bits.length; i += 8) bytes.push(parseInt(bits.slice(i, i + 8), 2));
+  return new Uint8Array(bytes);
+}
+async function hotp(secretBytes, counter) {
+  const buf = new ArrayBuffer(8), view = new DataView(buf);
+  view.setUint32(0, Math.floor(counter / 0x100000000) >>> 0, false);
+  view.setUint32(4, counter >>> 0, false);
+  const key = await crypto.subtle.importKey("raw", secretBytes, { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, buf));
+  const off = sig[sig.length - 1] & 0x0f;
+  const code = ((sig[off] & 0x7f) << 24) | (sig[off + 1] << 16) | (sig[off + 2] << 8) | sig[off + 3];
+  return (code % 1000000).toString().padStart(6, "0");
+}
+async function verifyTotp(secretB32, token) {
+  if (!/^\d{6}$/.test(token || "")) return false;
+  const secret = base32Decode(secretB32);
+  const step = Math.floor(Date.now() / 30000);
+  for (let w = -1; w <= 1; w++) if ((await hotp(secret, step + w)) === token) return true;
+  return false;
+}
+
+// ---- KV 헬퍼 ----
+async function kvUser(env, id) {
+  if (!env.USERS) return null;
+  const v = await env.USERS.get("user:" + id);
+  return v ? JSON.parse(v) : null;
+}
+async function kvProfile(env, id) {
+  if (!env.USERS) return null;
+  const v = await env.USERS.get("profile:" + id);
+  return v ? JSON.parse(v) : null;
+}
+function isAdmin(env, id, pw) {
+  return id === (env.ADMIN_ID || "admin") && pw === (env.ADMIN_PW || "admin");
+}
+function sessionCookies(token) {
+  const maxAge = 60 * 60 * 24; // 1일
+  const h = new Headers({ "content-type": "application/json; charset=utf-8" });
+  h.append("set-cookie", `mp_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`);
+  h.append("set-cookie", `mp_auth=1; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`);
+  return h;
+}
+
 async function handleLogin(request, env) {
   let body = {};
   try { body = await request.json(); } catch (e) {}
   const id = ((body && body.id) || "").trim();
   const pw = (body && body.pw) || "";
-  if (id !== (env.ADMIN_ID || "admin") || pw !== (env.ADMIN_PW || "admin")) {
+  const otp = (body && body.otp) || "";
+
+  // 1) 슈퍼 관리자 — OTP 불필요
+  if (isAdmin(env, id, pw)) {
+    const token = await makeSession(env, id, "admin");
+    return new Response(JSON.stringify({ ok: true, role: "admin" }), { status: 200, headers: sessionCookies(token) });
+  }
+
+  // 2) 일반 사용자 — 비밀번호 + OTP
+  const u = await kvUser(env, id);
+  if (!u || (await hashPw(pw, u.salt)) !== u.pwHash) {
     return json({ ok: false, error: "아이디 또는 비밀번호가 올바르지 않습니다." }, 401);
   }
-  const token = await makeSession(env, id);
-  const maxAge = 60 * 60 * 24; // 1일
-  const headers = new Headers({ "content-type": "application/json; charset=utf-8" });
-  headers.append("set-cookie", `mp_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`);
-  headers.append("set-cookie", `mp_auth=1; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`);
-  return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
+  if (u.totpSecret) {
+    if (!otp) return json({ ok: false, error: "OTP 6자리 코드를 입력해주세요.", needOtp: true }, 401);
+    if (!(await verifyTotp(u.totpSecret, otp))) return json({ ok: false, error: "OTP 코드가 올바르지 않습니다.", needOtp: true }, 401);
+  }
+  const token = await makeSession(env, id, "user");
+  return new Response(JSON.stringify({ ok: true, role: "user" }), { status: 200, headers: sessionCookies(token) });
 }
 
 function handleLogout() {
-  const headers = new Headers({ "content-type": "application/json; charset=utf-8" });
-  headers.append("set-cookie", "mp_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0");
-  headers.append("set-cookie", "mp_auth=; Secure; SameSite=Lax; Path=/; Max-Age=0");
-  return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
+  const h = new Headers({ "content-type": "application/json; charset=utf-8" });
+  h.append("set-cookie", "mp_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0");
+  h.append("set-cookie", "mp_auth=; Secure; SameSite=Lax; Path=/; Max-Age=0");
+  return new Response(JSON.stringify({ ok: true }), { status: 200, headers: h });
+}
+
+// 내 정보 (프로필 + 역할)
+async function handleMe(env, sess) {
+  const prof = (await kvProfile(env, sess.id)) || {};
+  const name = prof.name || (sess.role === "admin" ? "관리자" : sess.id);
+  return json({ id: sess.id, role: sess.role, name, org: prof.org || "" });
+}
+
+// 프로필 저장 (본인, 계정 귀속)
+async function handleProfileSave(request, env, sess) {
+  if (!env.USERS) return json({ error: "저장소(KV)가 연결되지 않았습니다." }, 500);
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+  const name = String((body && body.name) || "").slice(0, 40);
+  const org = String((body && body.org) || "").slice(0, 60);
+  await env.USERS.put("profile:" + sess.id, JSON.stringify({ name, org }));
+  return json({ ok: true });
+}
+
+// 사용자 목록 (관리자)
+async function handleUsersList(env) {
+  if (!env.USERS) return json({ users: [] });
+  const list = await env.USERS.list({ prefix: "user:" });
+  const users = [];
+  for (const k of list.keys) {
+    const u = JSON.parse((await env.USERS.get(k.name)) || "{}");
+    const prof = (await kvProfile(env, u.id)) || {};
+    users.push({ id: u.id, name: prof.name || u.id, org: prof.org || "", hasOtp: !!u.totpSecret, createdAt: u.createdAt || 0 });
+  }
+  users.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return json({ users });
+}
+
+// 사용자 추가 (관리자) → OTP 시크릿 발급
+async function handleUserCreate(request, env) {
+  if (!env.USERS) return json({ error: "저장소(KV)가 연결되지 않았습니다." }, 500);
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+  const id = String((body && body.id) || "").trim();
+  const pw = String((body && body.pw) || "");
+  const name = String((body && body.name) || "").slice(0, 40);
+  const org = String((body && body.org) || "").slice(0, 60);
+  if (!/^[a-zA-Z0-9_.-]{2,30}$/.test(id)) return json({ error: "아이디는 영문/숫자 2~30자여야 합니다." }, 400);
+  if (pw.length < 4) return json({ error: "비밀번호는 4자 이상이어야 합니다." }, 400);
+  if (id === (env.ADMIN_ID || "admin")) return json({ error: "예약된 아이디입니다." }, 400);
+  if (await kvUser(env, id)) return json({ error: "이미 존재하는 아이디입니다." }, 400);
+
+  const salt = randHex(16);
+  const pwHash = await hashPw(pw, salt);
+  const totpSecret = genBase32Secret(20);
+  await env.USERS.put("user:" + id, JSON.stringify({ id, role: "user", salt, pwHash, totpSecret, createdAt: Date.now() }));
+  await env.USERS.put("profile:" + id, JSON.stringify({ name: name || id, org }));
+
+  const label = encodeURIComponent("나의 포털:" + id);
+  const issuer = encodeURIComponent("나의 포털");
+  const otpauth = `otpauth://totp/${label}?secret=${totpSecret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
+  return json({ ok: true, id, secret: totpSecret, otpauth });
+}
+
+// 사용자 삭제 (관리자)
+async function handleUserDelete(request, env) {
+  if (!env.USERS) return json({ error: "저장소(KV)가 연결되지 않았습니다." }, 500);
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+  const id = String((body && body.id) || "").trim();
+  if (!id) return json({ error: "id가 필요합니다." }, 400);
+  await env.USERS.delete("user:" + id);
+  await env.USERS.delete("profile:" + id);
+  return json({ ok: true });
 }
 
 // ---------- 진입점 ----------
@@ -193,17 +328,29 @@ export default {
     const path = url.pathname;
 
     try {
-      // 로그인/로그아웃/디스코드는 인증 없이 처리
+      // 인증 없이 처리
       if (request.method === "POST" && path === "/api/login") return await handleLogin(request, env);
       if (request.method === "POST" && path === "/api/logout") return handleLogout();
       if (request.method === "POST" && path === "/interactions") return await handleDiscord(request, env, ctx);
 
-      // 보호된 API — 로그인(세션) 필요
-      if (request.method === "POST" && (path === "/api/chat" || path === "/api/email-reply")) {
-        const user = await verifySession(env, getCookie(request, "mp_session"));
-        if (!user) return json({ error: "로그인이 필요합니다." }, 401);
-        if (path === "/api/chat") return await handleChat(request, env);
-        return await handleEmailReply(request, env);
+      // 그 외 모든 /api/* 는 로그인(세션) 필요
+      if (path.startsWith("/api/")) {
+        const sess = await verifySession(env, getCookie(request, "mp_session"));
+        if (!sess) return json({ error: "로그인이 필요합니다." }, 401);
+
+        if (request.method === "GET" && path === "/api/me") return await handleMe(env, sess);
+        if (request.method === "POST" && path === "/api/profile") return await handleProfileSave(request, env, sess);
+        if (request.method === "POST" && path === "/api/chat") return await handleChat(request, env);
+        if (request.method === "POST" && path === "/api/email-reply") return await handleEmailReply(request, env);
+
+        // 관리자 전용
+        if (path.startsWith("/api/users")) {
+          if (sess.role !== "admin") return json({ error: "관리자만 접근할 수 있습니다." }, 403);
+          if (request.method === "GET" && path === "/api/users") return await handleUsersList(env);
+          if (request.method === "POST" && path === "/api/users") return await handleUserCreate(request, env);
+          if (request.method === "POST" && path === "/api/users/delete") return await handleUserDelete(request, env);
+        }
+        return json({ error: "알 수 없는 요청입니다." }, 404);
       }
     } catch (err) {
       return json({ error: String((err && err.message) || err) }, 500);

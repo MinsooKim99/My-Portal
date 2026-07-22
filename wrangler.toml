@@ -10,6 +10,11 @@ binding = "AI"
 [vars]
 DISCORD_PUBLIC_KEY = "283f007517223925f35d405284f6de6be1b545d72b11798f4d9bd2409a17f3e4"
 
+# 계정·프로필·OTP 저장용 KV (env.USERS)
+[[kv_namespaces]]
+binding = "USERS"
+id = "b40c7c44085c4d94a23023a6e3e78ac9"
+
 # 정적 파일(웹페이지) 서빙: public/ 폴더의 index.html, email.html
 [assets]
 directory = "./public"

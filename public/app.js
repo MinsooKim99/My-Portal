@@ -28,9 +28,9 @@
   }
   function setTheme(p) { localStorage.setItem(LS_THEME, p); applyTheme(); }
 
-  function getName() { return localStorage.getItem(LS_NAME) || "민수"; }
-  function getOrg() { return localStorage.getItem(LS_ORG) || "토마토시스템"; }
-  function initial(n) { n = (n || "").trim(); return n ? n[0] : "민"; }
+  function getName() { return localStorage.getItem(LS_NAME) || "사용자"; }
+  function getOrg() { return localStorage.getItem(LS_ORG) || ""; }
+  function initial(n) { n = (n || "").trim(); return n ? n[0] : "U"; }
 
   function applyProfile() {
     var n = getName(), o = getOrg();
@@ -38,6 +38,46 @@
     document.querySelectorAll(".js-org").forEach(function (e) { e.textContent = o; });
     document.querySelectorAll(".js-initial").forEach(function (e) { e.textContent = initial(n); });
     document.querySelectorAll(".js-greet").forEach(function (e) { e.textContent = "무엇을 도와드릴까요, " + n + "님?"; });
+  }
+
+  // 프로필을 서버(계정)에 저장 (계정 귀속). 입력 중엔 디바운스.
+  var saveT;
+  function saveProfile() {
+    clearTimeout(saveT);
+    saveT = setTimeout(function () {
+      fetch("/api/profile", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: getName(), org: getOrg() }) });
+    }, 500);
+  }
+
+  // 관리자 전용 '사용자 관리' 메뉴 추가
+  function injectAdminNav() {
+    var nav = document.querySelector(".nav");
+    if (!nav || nav.querySelector('[data-nav="admin"]')) return;
+    var a = document.createElement("a");
+    a.className = "nav-item";
+    a.setAttribute("data-nav", "admin");
+    a.href = "admin.html";
+    a.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.3 8 10 4.6-1.7 8-5 8-10V5l-8-3Z"></path><path d="M9.2 12.1l1.9 1.9 3.7-3.9"></path></svg><span>사용자 관리</span>';
+    nav.appendChild(a);
+    if (document.body.getAttribute("data-page") === "admin") a.classList.add("active");
+  }
+
+  // 서버에서 내 계정 정보(이름·소속·역할) 로드
+  function loadMe() {
+    fetch("/api/me").then(function (r) {
+      if (r.status === 401) { location.replace("login.html"); return null; }
+      return r.json();
+    }).then(function (d) {
+      if (!d) return;
+      if (d.name != null) localStorage.setItem(LS_NAME, d.name);
+      if (d.org != null) localStorage.setItem(LS_ORG, d.org);
+      applyProfile();
+      var sn = document.getElementById("setName"), so = document.getElementById("setOrg");
+      if (sn) sn.value = getName();
+      if (so) so.value = getOrg();
+      if (d.role === "admin") injectAdminNav();
+      window.MP.me = d;
+    }).catch(function () {});
   }
 
   function dateLabel() {
@@ -86,8 +126,8 @@
     if (modal) modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
 
     var setName = document.getElementById("setName"), setOrg = document.getElementById("setOrg");
-    if (setName) { setName.value = getName(); setName.setAttribute("value", getName()); setName.addEventListener("input", function () { localStorage.setItem(LS_NAME, setName.value); applyProfile(); }); }
-    if (setOrg) { setOrg.value = getOrg(); setOrg.setAttribute("value", getOrg()); setOrg.addEventListener("input", function () { localStorage.setItem(LS_ORG, setOrg.value); applyProfile(); }); }
+    if (setName) { setName.value = getName(); setName.addEventListener("input", function () { localStorage.setItem(LS_NAME, setName.value); applyProfile(); saveProfile(); }); }
+    if (setOrg) { setOrg.value = getOrg(); setOrg.addEventListener("input", function () { localStorage.setItem(LS_ORG, setOrg.value); applyProfile(); saveProfile(); }); }
 
     // 로그아웃 (사이드바 유저 메뉴의 '로그아웃' 버튼)
     var logoutBtn = document.querySelector(".menu-item.muted");
@@ -110,6 +150,9 @@
       backdrop.addEventListener("click", closeNav);
       document.querySelectorAll(".nav-item").forEach(function (a) { a.addEventListener("click", closeNav); });
     }
+
+    // 로그인 페이지가 아니면 서버에서 계정 정보 로드
+    if (_pg !== "login") loadMe();
   });
 
   // expose for pages

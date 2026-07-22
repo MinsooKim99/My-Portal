@@ -39,10 +39,14 @@
         <label>비밀번호</label>
         <input id="pw" type="password" class="login-input" autocomplete="current-password" placeholder="비밀번호" />
       </div>
+      <div class="login-field">
+        <label>OTP 코드 <span style="color:var(--muted3)">· 일반 사용자만</span></label>
+        <input id="otp" class="login-input" inputmode="numeric" autocomplete="one-time-code" placeholder="6자리 (관리자는 비움)" />
+      </div>
       <button type="submit" class="login-btn" id="loginBtn">로그인</button>
     </form>
     <div class="login-err" id="err"></div>
-    <div class="login-hint">기본 계정 · admin / admin</div>
+    <div class="login-hint">관리자 기본 계정 · admin / admin (OTP 없이)</div>
   </div>
 </div>
 
@@ -52,6 +56,7 @@
     e.preventDefault();
     var id = document.getElementById("id").value.trim();
     var pw = document.getElementById("pw").value;
+    var otp = document.getElementById("otp").value.trim();
     var err = document.getElementById("err");
     var btn = document.getElementById("loginBtn");
     err.textContent = "";
@@ -60,7 +65,7 @@
       var res = await fetch("/api/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: id, pw: pw }),
+        body: JSON.stringify({ id: id, pw: pw, otp: otp }),
       });
       var data = await res.json();
       if (data.ok) { location.href = "/"; return; }

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>사용자 관리 · 나의 포털</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="admin">
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-logo"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M5 12H3M21 12h-2M6.4 6.4 5 5M19 19l-1.4-1.4M17.6 6.4 19 5M5 19l1.4-1.4"></path><circle cx="12" cy="12" r="3.4"></circle></svg></div>
+      <div class="brand-text"><div class="brand-name">나의 포털</div><div class="brand-sub">개인용 AI 작업실</div></div>
+    </div>
+    <nav class="nav">
+      <div class="nav-label">메뉴</div>
+      <a class="nav-item" data-nav="home" href="index.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.6 12 3.5l9 7.1"></path><path d="M5.2 9.2V20h13.6V9.2"></path></svg><span>홈</span></a>
+      <a class="nav-item" data-nav="chat" href="chat.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10H8.5L4 20V5.5Z"></path><path d="M8 10.2h8M8 13h5"></path></svg><span>챗봇</span></a>
+      <a class="nav-item" data-nav="mail" href="email.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="5.4" width="17.6" height="13.2" rx="2.2"></rect><path d="m4 7 8 6 8-6"></path></svg><span>메일 답장 도구</span></a>
+      <a class="nav-item" data-nav="bot" href="bot.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="7" width="15" height="11" rx="3"></rect><path d="M9 12h.01M15 12h.01M12 3.5V7M8.5 18v2M15.5 18v2"></path></svg><span>디스코드 봇</span></a>
+    </nav>
+    <div class="side-foot">
+      <div>
+        <div class="nav-label" style="padding:0 4px 7px">테마</div>
+        <div class="theme-seg">
+          <button class="seg-btn" data-set="light"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"></path></svg><span>라이트</span></button>
+          <button class="seg-btn" data-set="dark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.3 6.3 0 0 0 9.5 9.5Z"></path></svg><span>다크</span></button>
+          <button class="seg-btn" data-set="system"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M9 20h6M12 16v4"></path></svg><span>시스템</span></button>
+        </div>
+      </div>
+      <div class="user-wrap">
+        <div id="userMenu" class="user-menu hidden">
+          <div class="menu-head"><div class="n js-name">사용자</div><div class="o js-org"></div></div>
+          <button id="openSettings" class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.6 1.6 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.82-.33 1.6 1.6 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.6 1.6 0 0 0 .33-1.82 1.6 1.6 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.6 1.6 0 0 0 9 4.6a1.6 1.6 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.6 1.6 0 0 0 1 1.51 1.6 1.6 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.6 1.6 0 0 0-.33 1.82V9a1.6 1.6 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.6 1.6 0 0 0-1.51 1Z"></path></svg>설정</button>
+          <button class="menu-item muted"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path></svg>로그아웃</button>
+        </div>
+        <button id="userBtn" class="user-btn">
+          <div class="avatar sm js-initial">U</div>
+          <div class="user-meta"><div class="user-name js-name">사용자</div><div class="user-org js-org"></div></div>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted2)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5-5 5 5"></path></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main scroll">
+    <div class="page narrow">
+      <div class="eyebrow">사용자 관리 · 관리자 전용</div>
+      <h1 class="title lg">사용자 추가 · OTP 등록</h1>
+      <p class="lede sm">새 사용자를 만들면 OTP 등록용 비밀 키가 나옵니다. 사용자가 Google OTP 앱에 등록하면, 이후 로그인 시 아이디·비밀번호와 함께 6자리 코드를 입력합니다.</p>
+
+      <div class="form">
+        <div class="field"><label>아이디</label><input id="nu-id" class="control" placeholder="영문/숫자 2~30자"></div>
+        <div class="field"><label>초기 비밀번호</label><input id="nu-pw" class="control" placeholder="4자 이상"></div>
+        <div class="field"><label>이름 <span class="opt">(선택)</span></label><input id="nu-name" class="control" placeholder="표시 이름"></div>
+        <div class="field"><label>소속 <span class="opt">(선택)</span></label><input id="nu-org" class="control" placeholder="소속"></div>
+
+        <div class="gen-row">
+          <button id="nu-add" class="btn btn-primary btn-lg">사용자 추가</button>
+          <span class="status" id="nu-status"></span>
+        </div>
+
+        <div id="otp-card" class="draft-card hidden">
+          <div class="draft-head"><div class="t">OTP 등록 정보</div></div>
+          <div style="padding:14px 0 0">
+            <p class="lede sm" style="margin:0 0 12px">아래 정보를 사용자에게 전달하세요. OTP 앱에서 <b>설정 키 입력(Enter a setup key)</b> 으로 등록합니다.</p>
+            <div style="font-size:12.5px;color:var(--muted);margin-bottom:5px">비밀 키 (수동 입력용)</div>
+            <div id="otp-secret" style="font-family:monospace;font-size:15px;letter-spacing:1px;background:var(--surf2);border:1px solid var(--line2);border-radius:8px;padding:11px 13px;word-break:break-all"></div>
+            <div style="margin-top:14px"><a id="otp-link" class="btn btn-primary" href="#" style="text-decoration:none">📱 OTP 앱에 바로 추가 (모바일)</a></div>
+            <div style="font-size:12px;color:var(--muted3);margin-top:12px">※ 이 키는 지금만 보입니다. 사용자가 등록한 걸 확인한 뒤 넘어가세요.</div>
+          </div>
+        </div>
+      </div>
+
+      <h2 class="section-h" style="margin-top:34px">사용자 목록</h2>
+      <div id="user-list" class="cmd-list"></div>
+    </div>
+  </main>
+</div>
+
+<div id="settingsModal" class="overlay hidden">
+  <div class="modal scroll">
+    <div class="modal-head"><h2>설정</h2><button class="close-btn js-close-settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>
+    <div class="modal-body">
+      <section>
+        <div class="set-title">프로필</div>
+        <div class="profile-row"><div class="avatar lg js-initial">U</div><div class="hint2">프로필에 표시되는 이름과 소속입니다.<br>이름 앞 글자가 아바타에 나타납니다.</div></div>
+        <div class="set-fields">
+          <div><label>이름</label><input id="setName" class="set-input" placeholder="이름"></div>
+          <div><label>소속</label><input id="setOrg" class="set-input" placeholder="소속"></div>
+        </div>
+      </section>
+      <section>
+        <div class="set-title">환경설정</div>
+        <div class="pref-row">
+          <div><div class="n">테마</div><div class="d">화면 밝기 모드를 선택합니다.</div></div>
+          <div class="theme-seg" style="flex:none;background:var(--side)">
+            <button class="seg-btn" data-set="light">라이트</button>
+            <button class="seg-btn" data-set="dark">다크</button>
+            <button class="seg-btn" data-set="system">시스템</button>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div class="modal-foot"><button class="done-btn js-close-settings">완료</button></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+  (function () {
+    // 관리자만 접근 (비관리자는 홈으로)
+    fetch("/api/me").then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || d.role !== "admin") location.replace("/");
+    }).catch(function () {});
+
+    var listEl = document.getElementById("user-list");
+    function loadUsers() {
+      fetch("/api/users").then(function (r) { return r.json(); }).then(function (d) {
+        var us = (d && d.users) || [];
+        if (!us.length) { listEl.innerHTML = '<div style="color:var(--muted2);font-size:14px">아직 추가된 사용자가 없습니다.</div>'; return; }
+        listEl.innerHTML = "";
+        us.forEach(function (u) {
+          var row = document.createElement("div");
+          row.className = "cmd";
+          row.style.display = "flex"; row.style.alignItems = "center"; row.style.gap = "12px";
+          var info = document.createElement("div"); info.style.flex = "1";
+          info.innerHTML = '<div class="n">' + u.id + (u.name && u.name !== u.id ? ' · ' + u.name : '') + (u.org ? ' · ' + u.org : '') + '</div><div class="d">' + (u.hasOtp ? 'OTP 등록됨' : 'OTP 없음') + '</div>';
+          row.appendChild(info);
+          var del = document.createElement("button"); del.className = "copy-btn"; del.textContent = "삭제";
+          del.addEventListener("click", function () {
+            if (!confirm(u.id + " 사용자를 삭제할까요?")) return;
+            fetch("/api/users/delete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: u.id }) }).then(function () { loadUsers(); });
+          });
+          row.appendChild(del);
+          listEl.appendChild(row);
+        });
+      });
+    }
+    loadUsers();
+
+    document.getElementById("nu-add").addEventListener("click", function () {
+      var id = document.getElementById("nu-id").value.trim();
+      var pw = document.getElementById("nu-pw").value;
+      var name = document.getElementById("nu-name").value.trim();
+      var org = document.getElementById("nu-org").value.trim();
+      var status = document.getElementById("nu-status");
+      var btn = this;
+      if (!id || !pw) { status.textContent = "아이디와 비밀번호를 입력하세요."; return; }
+      btn.disabled = true; status.textContent = "추가 중…";
+      fetch("/api/users", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: id, pw: pw, name: name, org: org }) })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.ok) {
+            status.textContent = "추가됨 ✓";
+            document.getElementById("otp-secret").textContent = d.secret;
+            document.getElementById("otp-link").href = d.otpauth;
+            document.getElementById("otp-card").classList.remove("hidden");
+            document.getElementById("nu-id").value = ""; document.getElementById("nu-pw").value = "";
+            document.getElementById("nu-name").value = ""; document.getElementById("nu-org").value = "";
+            loadUsers();
+          } else { status.textContent = "실패: " + ((d && d.error) || ""); }
+        })
+        .catch(function (e) { status.textContent = "오류: " + e.message; })
+        .finally(function () { btn.disabled = false; });
+    });
+  })();
+</script>
+</body>
+</html>
