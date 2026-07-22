@@ -10,8 +10,8 @@
 // 멍청한 소형 모델로는 떨어지지 않도록, 강한 모델만 후보로 둔다(마지막 8B는 최후 안전장치).
 // ⚠️ Cloudflare가 모델을 은퇴시켜도 이 목록만 최신 ID로 바꾸면 됩니다. (대시보드 AI > Models 에서 확인)
 const TEXT_MODELS = [
-  "@cf/meta/llama-3.3-70b-instruct-fp8-fast", // 기본 = 무료 중 가장 똑똑한 축(70B)
-  "@cf/meta/llama-4-scout-17b-16e-instruct",  // 최신 세대 대체
+  "@cf/qwen/qwen3-30b-a3b-fp8",               // 기본 = Qwen3 (최신, 한국어·다국어에 강함)
+  "@cf/meta/llama-3.3-70b-instruct-fp8-fast", // 대체 = 똑똑한 70B
   "@cf/meta/llama-3.1-8b-instruct-fast",      // 최후 안전장치(작지만 살아있는 모델)
 ];
 
@@ -98,12 +98,14 @@ async function runText(env, messages, maxTokens = 1024) {
   for (const model of TEXT_MODELS) {
     try {
       const r = await env.AI.run(model, { messages, max_tokens: maxTokens });
-      const text = (r && r.response) || "";
+      let text = (r && r.response) || "";
       // 일부 폐기 모델은 에러를 응답 본문에 담아 돌려주기도 함 → 다음 모델로
       if (/deprecat|retired|no longer available|\b5028\b/i.test(text)) {
         lastErr = text;
         continue;
       }
+      // Qwen3 등 추론형 모델이 <think>...</think> 로 사고 과정을 함께 뱉으면 제거
+      text = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
       if (text) return { text, model };
       lastErr = "빈 응답";
     } catch (err) {
