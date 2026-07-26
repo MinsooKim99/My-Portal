@@ -99,13 +99,41 @@
     var inner = document.getElementById("inner");
     var log = document.getElementById("log");
     var input = document.getElementById("chatInput");
-    var KEY = "mp-chat-history";
+    // 마크다운 렌더러(app.js 제공). 로그인 리다이렉트 중 등 MP 가 없으면 평문으로 안전하게 표시.
+    var MD = (window.MP && window.MP.md) ? window.MP.md : function (t) {
+      return String(t == null ? "" : t).replace(/[&<>]/g, function (c) {
+        return c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;";
+      });
+    };
+
+    // 대화는 이 기기에만 저장하되, 같은 기기에서도 계정별로 분리한다.
+    var ACCT = (window.MP && window.MP.accountId) ? window.MP.accountId() : (localStorage.getItem("mp-id") || "guest");
+    var KEY = "mp-chat-history:" + ACCT;
     var GREET = "안녕하세요! 무엇을 도와드릴까요? 질문을 입력하시면 바로 답해 드릴게요.";
+
+    // 계정 구분 전에 저장돼 있던 기존 대화는 현재 계정으로 한 번 이관
+    try {
+      var old = localStorage.getItem("mp-chat-history");
+      if (old && !localStorage.getItem(KEY)) { localStorage.setItem(KEY, old); }
+      if (old) localStorage.removeItem("mp-chat-history");
+    } catch (e) {}
+
     var messages = load();
     var AI_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 4v3M12 17v3M4 12h3M17 12h3"></path></svg>';
 
     function load() { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; } }
     function save() { try { localStorage.setItem(KEY, JSON.stringify(messages)); } catch (e) {} }
+
+    // 추론형 모델이 흘리는 <think>…</think> 는 화면에서 감춘다(닫히지 않은 경우도 처리)
+    function visible(raw) {
+      var s = String(raw || "");
+      var open = s.indexOf("<think>");
+      if (open >= 0) {
+        var close = s.indexOf("</think>");
+        s = close >= 0 ? s.slice(0, open) + s.slice(close + 8) : s.slice(0, open);
+      }
+      return s.trim();
+    }
 
     // 응답에 실제로 사용된 모델을 헤더에 표시 (하드코딩 아님 — 서버가 알려준 값)
     var MKEY = "mp-last-model";
@@ -127,8 +155,10 @@
       row.className = "msg-row" + (role === "user" ? " user" : "");
       if (role === "ai") { var av = document.createElement("div"); av.className = "ai-av"; av.innerHTML = AI_ICON; row.appendChild(av); }
       var b = document.createElement("div");
-      b.className = "bubble" + (role === "user" ? " user" : "");
-      b.textContent = text;
+      b.className = "bubble" + (role === "user" ? " user" : " md");
+      // AI 답변은 마크다운으로 렌더링(굵게·목록·코드블록), 사용자 입력은 그대로 표시
+      if (role === "user") b.textContent = text;
+      else if (text) b.innerHTML = MD(text);
       row.appendChild(b);
       inner.appendChild(row);
       scroll();
@@ -147,6 +177,17 @@
     addMsg("ai", GREET);
     messages.forEach(function (m) { addMsg(m.role === "user" ? "user" : "ai", m.content); });
 
+    // 스트리밍이 안 되는 상황(구형 브라우저·프록시 등)에서 쓰는 일반 요청
+    async function sendPlain() {
+      var res = await fetch("/api/chat", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages: messages })
+      });
+      var data = await res.json();
+      showModel(data.model);
+      return data.answer || data.error || "(응답 없음)";
+    }
+
     async function send(text) {
       text = (text || input.value).trim();
       if (!text) return;
@@ -154,24 +195,63 @@
       addMsg("user", text);
       messages.push({ role: "user", content: text });
       save();
+
       var typing = addTyping();
+      var bubble = null, raw = "";
+      function paint() {
+        var shown = visible(raw);
+        if (!shown) return;
+        if (!bubble) { typing.remove(); bubble = addMsg("ai", ""); }
+        bubble.innerHTML = MD(shown);
+        scroll();
+      }
+
       try {
         var res = await fetch("/api/chat", {
           method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ messages: messages })
+          body: JSON.stringify({ messages: messages, stream: true })
         });
-        var data = await res.json();
-        var answer = data.answer || data.error || "(응답 없음)";
-        typing.remove();
-        addMsg("ai", answer);
-        showModel(data.model);
+        if (!res.ok || !res.body) throw new Error("no-stream");
+        showModel(res.headers.get("x-model"));
+
+        // SSE(data: {...}) 를 읽어가며 화면을 실시간 갱신
+        var reader = res.body.getReader(), dec = new TextDecoder(), buf = "";
+        while (true) {
+          var r = await reader.read();
+          if (r.done) break;
+          buf += dec.decode(r.value, { stream: true });
+          var lines = buf.split("\n");
+          buf = lines.pop();
+          for (var i = 0; i < lines.length; i++) {
+            var ln = lines[i].trim();
+            if (ln.indexOf("data:") !== 0) continue;
+            var p = ln.slice(5).trim();
+            if (!p || p === "[DONE]") continue;
+            try { var o = JSON.parse(p); if (o.response) { raw += o.response; paint(); } } catch (e2) {}
+          }
+        }
+
+        var answer = visible(raw);
+        if (!answer) answer = await sendPlain();   // 스트림이 비었으면 일반 요청으로 보완
+        if (!bubble) { typing.remove(); bubble = addMsg("ai", ""); }
+        bubble.innerHTML = MD(answer);
+        scroll();
         messages.push({ role: "assistant", content: answer });
         save();
       } catch (e) {
-        typing.remove();
-        messages.pop(); // 실패한 턴은 저장하지 않음
-        save();
-        addMsg("ai", "오류: " + e.message);
+        try {
+          var fallback = await sendPlain();
+          if (!bubble) { typing.remove(); bubble = addMsg("ai", ""); }
+          bubble.innerHTML = MD(fallback);
+          scroll();
+          messages.push({ role: "assistant", content: fallback });
+          save();
+        } catch (e3) {
+          if (!bubble) typing.remove();
+          messages.pop();                          // 실패한 턴은 저장하지 않음
+          save();
+          addMsg("ai", "오류: " + e3.message);
+        }
       }
     }
 

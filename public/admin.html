@@ -65,7 +65,7 @@
         </div>
 
         <div id="otp-card" class="draft-card hidden">
-          <div class="draft-head"><div class="t">OTP 등록 정보</div></div>
+          <div class="draft-head"><div class="t">OTP 등록 정보<span id="otp-who" style="font-family:'Noto Sans KR',sans-serif;font-weight:400;font-size:13px;color:var(--muted3)"></span></div></div>
           <div style="padding:14px 0 0">
             <p class="lede sm" style="margin:0 0 12px">아래 정보를 사용자에게 전달하세요. OTP 앱에서 <b>설정 키 입력(Enter a setup key)</b> 으로 등록합니다.</p>
             <div style="font-size:12.5px;color:var(--muted);margin-bottom:5px">비밀 키 (수동 입력용)</div>
@@ -119,6 +119,16 @@
     }).catch(function () {});
 
     var listEl = document.getElementById("user-list");
+
+    // OTP 등록 정보 표시 (사용자 추가 / OTP 재발급 공통)
+    function showOtp(d) {
+      document.getElementById("otp-secret").textContent = d.secret;
+      document.getElementById("otp-link").href = d.otpauth;
+      document.getElementById("otp-who").textContent = d.id ? " · " + d.id : "";
+      var card = document.getElementById("otp-card");
+      card.classList.remove("hidden");
+      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
     function loadUsers() {
       fetch("/api/users").then(function (r) { return r.json(); }).then(function (d) {
         var us = (d && d.users) || [];
@@ -131,6 +141,31 @@
           var info = document.createElement("div"); info.style.flex = "1";
           info.innerHTML = '<div class="n">' + u.id + (u.name && u.name !== u.id ? ' · ' + u.name : '') + (u.org ? ' · ' + u.org : '') + '</div><div class="d">' + (u.hasOtp ? 'OTP 등록됨' : 'OTP 없음') + '</div>';
           row.appendChild(info);
+
+          // OTP 재발급 — 폰 분실/앱 삭제 시 새 키를 발급해 다시 등록
+          var reotp = document.createElement("button"); reotp.className = "copy-btn"; reotp.textContent = "OTP 재발급";
+          reotp.addEventListener("click", function () {
+            if (!confirm(u.id + " 의 OTP를 재발급할까요?\n기존 OTP는 즉시 사용할 수 없게 됩니다.")) return;
+            fetch("/api/users/reset-otp", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: u.id }) })
+              .then(function (r) { return r.json(); })
+              .then(function (d) {
+                if (d && d.ok) { showOtp(d); loadUsers(); }
+                else alert((d && d.error) || "재발급 실패");
+              });
+          });
+          row.appendChild(reotp);
+
+          // 비밀번호 초기화
+          var repw = document.createElement("button"); repw.className = "copy-btn"; repw.textContent = "비번 초기화";
+          repw.addEventListener("click", function () {
+            var pw = prompt(u.id + " 의 새 비밀번호를 입력하세요 (4자 이상)");
+            if (!pw) return;
+            fetch("/api/users/reset-pw", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: u.id, pw: pw }) })
+              .then(function (r) { return r.json(); })
+              .then(function (d) { alert(d && d.ok ? "변경되었습니다." : ((d && d.error) || "실패")); });
+          });
+          row.appendChild(repw);
+
           var del = document.createElement("button"); del.className = "copy-btn"; del.textContent = "삭제";
           del.addEventListener("click", function () {
             if (!confirm(u.id + " 사용자를 삭제할까요?")) return;
@@ -157,9 +192,7 @@
         .then(function (d) {
           if (d && d.ok) {
             status.textContent = "추가됨 ✓";
-            document.getElementById("otp-secret").textContent = d.secret;
-            document.getElementById("otp-link").href = d.otpauth;
-            document.getElementById("otp-card").classList.remove("hidden");
+            showOtp(d);
             document.getElementById("nu-id").value = ""; document.getElementById("nu-pw").value = "";
             document.getElementById("nu-name").value = ""; document.getElementById("nu-org").value = "";
             loadUsers();

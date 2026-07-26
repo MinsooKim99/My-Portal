@@ -119,6 +119,21 @@ async function runText(env, messages, maxTokens = 1024) {
   throw new Error("사용 가능한 텍스트 모델이 없습니다(후보가 모두 폐기/오류). 마지막 메시지: " + lastErr);
 }
 
+// 스트리밍 버전. 폐기/미존재 모델이면 다음 후보로 넘어가고, 성공하면 SSE 스트림을 그대로 넘긴다.
+async function runTextStream(env, messages, maxTokens = 1024) {
+  let lastErr = "";
+  for (const model of TEXT_MODELS) {
+    try {
+      const stream = await env.AI.run(model, { messages, max_tokens: maxTokens, stream: true });
+      return { stream, model };
+    } catch (err) {
+      lastErr = String((err && err.message) || err);
+      if (!/deprecat|retired|not found|no such model|\b5028\b|\b3026\b|\b1001\b/i.test(lastErr)) throw err;
+    }
+  }
+  throw new Error("사용 가능한 텍스트 모델이 없습니다(후보가 모두 폐기/오류). 마지막 메시지: " + lastErr);
+}
+
 // ---------- 로그인 / 세션 / 계정 (KV: env.USERS) ----------
 function getCookie(request, name) {
   const c = request.headers.get("cookie") || "";
@@ -210,6 +225,13 @@ async function kvProfile(env, id) {
 function isAdmin(env, id, pw) {
   return id === (env.ADMIN_ID || "admin") && pw === (env.ADMIN_PW || "admin");
 }
+// OTP 앱 등록용 표준 URI (Google Authenticator 등이 이 형식을 이해함)
+function otpauthUri(id, secret) {
+  const label = encodeURIComponent("나의 포털:" + id);
+  const issuer = encodeURIComponent("나의 포털");
+  return `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
+}
+
 function sessionCookies(token) {
   const maxAge = 60 * 60 * 24; // 1일
   const h = new Headers({ "content-type": "application/json; charset=utf-8" });
@@ -228,7 +250,7 @@ async function handleLogin(request, env) {
   // 1) 슈퍼 관리자 — OTP 불필요
   if (isAdmin(env, id, pw)) {
     const token = await makeSession(env, id, "admin");
-    return new Response(JSON.stringify({ ok: true, role: "admin" }), { status: 200, headers: sessionCookies(token) });
+    return new Response(JSON.stringify({ ok: true, role: "admin", id }), { status: 200, headers: sessionCookies(token) });
   }
 
   // 2) 일반 사용자 — 비밀번호 + OTP
@@ -241,7 +263,56 @@ async function handleLogin(request, env) {
     if (!(await verifyTotp(u.totpSecret, otp))) return json({ ok: false, error: "OTP 코드가 올바르지 않습니다.", needOtp: true }, 401);
   }
   const token = await makeSession(env, id, "user");
-  return new Response(JSON.stringify({ ok: true, role: "user" }), { status: 200, headers: sessionCookies(token) });
+  return new Response(JSON.stringify({ ok: true, role: "user", id }), { status: 200, headers: sessionCookies(token) });
+}
+
+// 내 비밀번호 변경 (KV 사용자만 — 관리자 비번은 환경변수라 여기서 못 바꿈)
+async function handlePasswordChange(request, env, sess) {
+  if (sess.role === "admin") {
+    return json({ error: "관리자 비밀번호는 Cloudflare 환경변수(ADMIN_PW)에서 변경합니다." }, 400);
+  }
+  if (!env.USERS) return json({ error: "저장소(KV)가 연결되지 않았습니다." }, 500);
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+  const cur = String((body && body.currentPw) || "");
+  const next = String((body && body.newPw) || "");
+  if (next.length < 4) return json({ error: "새 비밀번호는 4자 이상이어야 합니다." }, 400);
+  const u = await kvUser(env, sess.id);
+  if (!u) return json({ error: "사용자를 찾을 수 없습니다." }, 404);
+  if ((await hashPw(cur, u.salt)) !== u.pwHash) return json({ error: "현재 비밀번호가 올바르지 않습니다." }, 401);
+  u.salt = randHex(16);
+  u.pwHash = await hashPw(next, u.salt);
+  await env.USERS.put("user:" + sess.id, JSON.stringify(u));
+  return json({ ok: true });
+}
+
+// OTP 재발급 (관리자) — 폰 분실/앱 삭제 시 새 키 발급
+async function handleResetOtp(request, env) {
+  if (!env.USERS) return json({ error: "저장소(KV)가 연결되지 않았습니다." }, 500);
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+  const id = String((body && body.id) || "").trim();
+  const u = await kvUser(env, id);
+  if (!u) return json({ error: "사용자를 찾을 수 없습니다." }, 404);
+  u.totpSecret = genBase32Secret(20);
+  await env.USERS.put("user:" + id, JSON.stringify(u));
+  return json({ ok: true, id, secret: u.totpSecret, otpauth: otpauthUri(id, u.totpSecret) });
+}
+
+// 비밀번호 초기화 (관리자)
+async function handleResetPw(request, env) {
+  if (!env.USERS) return json({ error: "저장소(KV)가 연결되지 않았습니다." }, 500);
+  let body = {};
+  try { body = await request.json(); } catch (e) {}
+  const id = String((body && body.id) || "").trim();
+  const pw = String((body && body.pw) || "");
+  if (pw.length < 4) return json({ error: "비밀번호는 4자 이상이어야 합니다." }, 400);
+  const u = await kvUser(env, id);
+  if (!u) return json({ error: "사용자를 찾을 수 없습니다." }, 404);
+  u.salt = randHex(16);
+  u.pwHash = await hashPw(pw, u.salt);
+  await env.USERS.put("user:" + id, JSON.stringify(u));
+  return json({ ok: true });
 }
 
 function handleLogout() {
@@ -303,10 +374,7 @@ async function handleUserCreate(request, env) {
   await env.USERS.put("user:" + id, JSON.stringify({ id, role: "user", salt, pwHash, totpSecret, createdAt: Date.now() }));
   await env.USERS.put("profile:" + id, JSON.stringify({ name: name || id, org }));
 
-  const label = encodeURIComponent("나의 포털:" + id);
-  const issuer = encodeURIComponent("나의 포털");
-  const otpauth = `otpauth://totp/${label}?secret=${totpSecret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
-  return json({ ok: true, id, secret: totpSecret, otpauth });
+  return json({ ok: true, id, secret: totpSecret, otpauth: otpauthUri(id, totpSecret) });
 }
 
 // 사용자 삭제 (관리자)
@@ -340,6 +408,7 @@ export default {
 
         if (request.method === "GET" && path === "/api/me") return await handleMe(env, sess);
         if (request.method === "POST" && path === "/api/profile") return await handleProfileSave(request, env, sess);
+        if (request.method === "POST" && path === "/api/password") return await handlePasswordChange(request, env, sess);
         if (request.method === "POST" && path === "/api/chat") return await handleChat(request, env);
         if (request.method === "POST" && path === "/api/email-reply") return await handleEmailReply(request, env);
 
@@ -349,6 +418,8 @@ export default {
           if (request.method === "GET" && path === "/api/users") return await handleUsersList(env);
           if (request.method === "POST" && path === "/api/users") return await handleUserCreate(request, env);
           if (request.method === "POST" && path === "/api/users/delete") return await handleUserDelete(request, env);
+          if (request.method === "POST" && path === "/api/users/reset-otp") return await handleResetOtp(request, env);
+          if (request.method === "POST" && path === "/api/users/reset-pw") return await handleResetPw(request, env);
         }
         return json({ error: "알 수 없는 요청입니다." }, 404);
       }
@@ -372,6 +443,19 @@ async function handleChat(request, env) {
     { role: "system", content: chatSystem() },
     ...msgs,
   ];
+
+  // 스트리밍 요청이면 SSE 를 그대로 흘려보낸다 (실제 사용 모델은 x-model 헤더로 전달)
+  if (body.stream) {
+    const { stream, model } = await runTextStream(env, withSystem, 1024);
+    return new Response(stream, {
+      headers: {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache",
+        "x-model": model,
+      },
+    });
+  }
+
   const { text, model } = await runText(env, withSystem, 1024);
   return json({ answer: text, model });
 }

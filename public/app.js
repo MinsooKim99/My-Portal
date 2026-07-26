@@ -7,7 +7,66 @@
     return;
   }
 
-  var LS_THEME = "mp-theme", LS_NAME = "mp-name", LS_ORG = "mp-org", LS_ROLE = "mp-role";
+  var LS_THEME = "mp-theme", LS_NAME = "mp-name", LS_ORG = "mp-org", LS_ROLE = "mp-role", LS_ID = "mp-id";
+
+  /* ---------- 간단한 마크다운 → HTML (외부 라이브러리 없음) ----------
+     AI 응답에 HTML 이 섞여 있어도 안전하도록 먼저 escape 한 뒤 변환한다. */
+  function escHtml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function mdToHtml(src) {
+    var text = String(src == null ? "" : src);
+
+    // 1) 코드블록은 내용 변환 없이 먼저 분리
+    var blocks = [];
+    text = text.replace(/```[a-zA-Z0-9_+#.-]*\n?([\s\S]*?)```/g, function (m, code) {
+      blocks.push('<pre class="md-pre"><code>' + escHtml(code.replace(/\n$/, "")) + "</code></pre>");
+      return "\u0000B" + (blocks.length - 1) + "\u0000";
+    });
+
+    // 2) 남은 본문 escape
+    text = escHtml(text);
+
+    // 3) 인라인 코드 분리
+    var inline = [];
+    text = text.replace(/`([^`\n]+)`/g, function (m, c) {
+      inline.push('<code class="md-code">' + c + "</code>");
+      return "\u0000I" + (inline.length - 1) + "\u0000";
+    });
+
+    // 4) 링크 → 굵게 → 기울임
+    text = text.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    text = text.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+    text = text.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+
+    // 5) 줄 단위: 헤딩 / 목록 / 인용 / 단락
+    var lines = text.split("\n"), out = [], listType = null;
+    function closeList() { if (listType) { out.push(listType === "ul" ? "</ul>" : "</ol>"); listType = null; } }
+    lines.forEach(function (ln) {
+      var t = ln.trim(), m;
+      if (!t) { closeList(); return; }
+      if (/^\u0000B\d+\u0000$/.test(t)) { closeList(); out.push(t); return; }   // 코드블록 자리
+      if ((m = t.match(/^(#{1,4})\s+(.*)$/))) { closeList(); out.push('<div class="md-h">' + m[2] + "</div>"); return; }
+      if ((m = t.match(/^[-*]\s+(.*)$/))) {
+        if (listType !== "ul") { closeList(); out.push('<ul class="md-list">'); listType = "ul"; }
+        out.push("<li>" + m[1] + "</li>"); return;
+      }
+      if ((m = t.match(/^\d+\.\s+(.*)$/))) {
+        if (listType !== "ol") { closeList(); out.push('<ol class="md-list">'); listType = "ol"; }
+        out.push("<li>" + m[1] + "</li>"); return;
+      }
+      if ((m = t.match(/^&gt;\s?(.*)$/))) { closeList(); out.push('<blockquote class="md-q">' + m[1] + "</blockquote>"); return; }
+      closeList();
+      out.push('<p class="md-p">' + ln + "</p>");
+    });
+    closeList();
+
+    // 6) 자리표시자 복원
+    var html = out.join("");
+    html = html.replace(/\u0000I(\d+)\u0000/g, function (m, i) { return inline[+i]; });
+    html = html.replace(/\u0000B(\d+)\u0000/g, function (m, i) { return blocks[+i]; });
+    return html;
+  }
   var mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 
   function pref() {
@@ -66,6 +125,39 @@
     if (a) a.remove();
   }
 
+  // 설정창에 '비밀번호 변경' 섹션 추가 (관리자 비번은 환경변수라 제외)
+  function injectPasswordSection(role) {
+    var body = document.querySelector("#settingsModal .modal-body");
+    if (!body || document.getElementById("pwSection") || role === "admin") return;
+    var sec = document.createElement("section");
+    sec.id = "pwSection";
+    sec.innerHTML =
+      '<div class="set-title">비밀번호 변경</div>' +
+      '<div class="set-fields">' +
+      '<div><label>현재 비밀번호</label><input id="curPw" type="password" class="set-input" placeholder="현재 비밀번호"></div>' +
+      '<div><label>새 비밀번호</label><input id="newPw" type="password" class="set-input" placeholder="4자 이상"></div>' +
+      "</div>" +
+      '<div style="display:flex;align-items:center;gap:10px;margin-top:12px">' +
+      '<button id="pwBtn" class="btn btn-primary" style="padding:9px 16px;font-size:13.5px">변경</button>' +
+      '<span id="pwMsg" style="font-size:13px;color:var(--muted2)"></span></div>';
+    body.appendChild(sec);
+
+    document.getElementById("pwBtn").addEventListener("click", function () {
+      var cur = document.getElementById("curPw"), nw = document.getElementById("newPw");
+      var msg = document.getElementById("pwMsg"), btn = this;
+      if (!nw.value || nw.value.length < 4) { msg.textContent = "새 비밀번호는 4자 이상이어야 합니다."; return; }
+      btn.disabled = true; msg.textContent = "변경 중…";
+      fetch("/api/password", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ currentPw: cur.value, newPw: nw.value }),
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d && d.ok) { msg.textContent = "변경되었습니다 ✓"; cur.value = ""; nw.value = ""; }
+        else msg.textContent = (d && d.error) || "변경 실패";
+      }).catch(function (e) { msg.textContent = "오류: " + e.message; })
+        .finally(function () { btn.disabled = false; });
+    });
+  }
+
   // 서버에서 내 계정 정보(이름·소속·역할) 로드
   function loadMe() {
     fetch("/api/me").then(function (r) {
@@ -79,9 +171,13 @@
       var sn = document.getElementById("setName"), so = document.getElementById("setOrg");
       if (sn) sn.value = getName();
       if (so) so.value = getOrg();
-      // 역할을 캐시해서 다음 페이지부터는 첫 렌더에 바로 그려지게 함(깜박임 방지)
-      try { localStorage.setItem(LS_ROLE, d.role || "user"); } catch (e) {}
+      // 역할·계정ID를 캐시 (역할: 메뉴 깜박임 방지 / ID: 기기 내 계정별 대화 분리)
+      try {
+        localStorage.setItem(LS_ROLE, d.role || "user");
+        if (d.id) localStorage.setItem(LS_ID, d.id);
+      } catch (e) {}
       if (d.role === "admin") injectAdminNav(); else removeAdminNav();
+      injectPasswordSection(d.role);
       window.MP.me = d;
     }).catch(function () {});
   }
@@ -167,5 +263,9 @@
   });
 
   // expose for pages
-  window.MP = { dateLabel: dateLabel };
+  window.MP = {
+    dateLabel: dateLabel,
+    md: mdToHtml,                                                   // 마크다운 → HTML
+    accountId: function () { return localStorage.getItem(LS_ID) || "guest"; },
+  };
 })();

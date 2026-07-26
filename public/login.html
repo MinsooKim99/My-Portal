@@ -69,8 +69,11 @@
       });
       var data = await res.json();
       if (data.ok) {
-        // 역할을 저장해 첫 화면부터 관리자 메뉴가 함께 렌더되도록 함
-        try { localStorage.setItem("mp-role", data.role || "user"); } catch (e2) {}
+        // 역할·계정ID 저장 (메뉴 즉시 렌더 + 기기 내 계정별 대화 분리)
+        try {
+          localStorage.setItem("mp-role", data.role || "user");
+          if (data.id) localStorage.setItem("mp-id", data.id);
+        } catch (e2) {}
         location.href = "/";
         return;
       }
