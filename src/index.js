@@ -385,7 +385,7 @@ async function handleEmailReply(request, env) {
   if (keywords && keywords.trim()) user += "\n\n답장에 아래 내용/키워드를 반드시 반영해줘:\n" + keywords;
   if (tone && tone.trim()) user += "\n\n말투/톤: " + tone;
 
-  const { text: draft } = await runText(
+  const { text: draft, model } = await runText(
     env,
     [
       { role: "system", content: EMAIL_SYSTEM },
@@ -394,7 +394,7 @@ async function handleEmailReply(request, env) {
     ],
     1024
   );
-  return json({ draft });
+  return json({ draft, model });
 }
 
 // ---------- 디스코드 인터랙션 ----------

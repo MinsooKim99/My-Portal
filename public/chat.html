@@ -51,7 +51,7 @@
     <div class="chat">
       <header class="chat-head">
         <div class="chat-head-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10H8.5L4 20V5.5Z"></path></svg></div>
-        <div><div class="t">챗봇</div><div class="s">한국어 AI 비서</div></div>
+        <div><div class="t">챗봇</div><div class="s" id="modelLabel" title="응답에 실제로 사용된 모델">한국어 AI 비서</div></div>
         <button id="newChat" class="copy-btn" style="margin-left:auto"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg> 새 대화</button>
       </header>
       <div class="chat-log scroll" id="log"><div class="chat-inner" id="inner"></div></div>
@@ -107,6 +107,19 @@
     function load() { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; } }
     function save() { try { localStorage.setItem(KEY, JSON.stringify(messages)); } catch (e) {} }
 
+    // 응답에 실제로 사용된 모델을 헤더에 표시 (하드코딩 아님 — 서버가 알려준 값)
+    var MKEY = "mp-last-model";
+    function showModel(id) {
+      if (!id) return;
+      try { localStorage.setItem(MKEY, id); } catch (e) {}
+      var el = document.getElementById("modelLabel");
+      if (!el) return;
+      var parts = id.split("/");
+      el.textContent = parts[parts.length - 1];   // 예: qwen3-30b-a3b-fp8
+      el.title = id;                              // 전체 ID는 마우스 올리면 보임
+    }
+    try { showModel(localStorage.getItem(MKEY)); } catch (e) {}
+
     function scroll() { log.scrollTop = log.scrollHeight; }
 
     function addMsg(role, text) {
@@ -151,6 +164,7 @@
         var answer = data.answer || data.error || "(응답 없음)";
         typing.remove();
         addMsg("ai", answer);
+        showModel(data.model);
         messages.push({ role: "assistant", content: answer });
         save();
       } catch (e) {
