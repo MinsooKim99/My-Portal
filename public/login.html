@@ -68,7 +68,12 @@
         body: JSON.stringify({ id: id, pw: pw, otp: otp }),
       });
       var data = await res.json();
-      if (data.ok) { location.href = "/"; return; }
+      if (data.ok) {
+        // 역할을 저장해 첫 화면부터 관리자 메뉴가 함께 렌더되도록 함
+        try { localStorage.setItem("mp-role", data.role || "user"); } catch (e2) {}
+        location.href = "/";
+        return;
+      }
       err.textContent = data.error || "로그인 실패";
     } catch (e2) {
       err.textContent = "오류: " + e2.message;

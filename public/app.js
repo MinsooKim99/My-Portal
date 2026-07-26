@@ -7,7 +7,7 @@
     return;
   }
 
-  var LS_THEME = "mp-theme", LS_NAME = "mp-name", LS_ORG = "mp-org";
+  var LS_THEME = "mp-theme", LS_NAME = "mp-name", LS_ORG = "mp-org", LS_ROLE = "mp-role";
   var mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 
   function pref() {
@@ -61,6 +61,10 @@
     nav.appendChild(a);
     if (document.body.getAttribute("data-page") === "admin") a.classList.add("active");
   }
+  function removeAdminNav() {
+    var a = document.querySelector('.nav-item[data-nav="admin"]');
+    if (a) a.remove();
+  }
 
   // 서버에서 내 계정 정보(이름·소속·역할) 로드
   function loadMe() {
@@ -75,7 +79,9 @@
       var sn = document.getElementById("setName"), so = document.getElementById("setOrg");
       if (sn) sn.value = getName();
       if (so) so.value = getOrg();
-      if (d.role === "admin") injectAdminNav();
+      // 역할을 캐시해서 다음 페이지부터는 첫 렌더에 바로 그려지게 함(깜박임 방지)
+      try { localStorage.setItem(LS_ROLE, d.role || "user"); } catch (e) {}
+      if (d.role === "admin") injectAdminNav(); else removeAdminNav();
       window.MP.me = d;
     }).catch(function () {});
   }
@@ -84,6 +90,10 @@
     var d = new Date(), days = ["일", "월", "화", "수", "목", "금", "토"];
     return (d.getMonth() + 1) + "월 " + d.getDate() + "일 " + days[d.getDay()] + "요일";
   }
+
+  // 캐시된 역할이 관리자면 즉시(첫 렌더에) 메뉴를 넣는다 → 뒤늦게 나타나 깜박이는 현상 방지.
+  // app.js 는 </body> 직전에 로드되므로 이 시점에 .nav 가 이미 존재한다.
+  try { if (localStorage.getItem(LS_ROLE) === "admin") injectAdminNav(); } catch (e) {}
 
   document.addEventListener("DOMContentLoaded", function () {
     applyTheme();
@@ -132,6 +142,7 @@
     // 로그아웃 (사이드바 유저 메뉴의 '로그아웃' 버튼)
     var logoutBtn = document.querySelector(".menu-item.muted");
     if (logoutBtn) logoutBtn.addEventListener("click", function () {
+      try { localStorage.removeItem(LS_ROLE); } catch (e) {}
       fetch("/api/logout", { method: "POST" }).finally(function () { location.href = "login.html"; });
     });
 
