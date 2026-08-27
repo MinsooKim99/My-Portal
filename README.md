@@ -19,7 +19,7 @@
 터미널(명령 프롬프트)에서 이 폴더로 이동해 시작합니다.
 
 ```bash
-cd my-ai-worker
+cd My-Portal
 npm install
 ```
 
@@ -44,7 +44,7 @@ npx wrangler deploy
 성공하면 아래처럼 **공개 주소**가 출력됩니다.
 
 ```
-https://my-ai-worker.<your-subdomain>.workers.dev
+https://myptl.<your-subdomain>.workers.dev
 ```
 
 이 주소를 브라우저에서 열면:
@@ -91,7 +91,7 @@ npx wrangler deploy
 1. 디스코드 개발자 페이지 → **General Information**
 2. **INTERACTIONS ENDPOINT URL** 칸에 아래 주소 입력 후 **Save**
    ```
-   https://my-ai-worker.<your-subdomain>.workers.dev/interactions
+   https://myptl.<your-subdomain>.workers.dev/interactions
    ```
    - 저장이 성공하면 서명 검증이 정상 동작하는 것입니다. (저장 실패 시 3-3의 PUBLIC KEY와 재배포를 확인하세요.)
 
